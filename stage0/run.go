@@ -258,9 +258,11 @@ func Run(cfg RunConfig, dir string) {
 
 	if cfg.SpawnMetadataService {
 		log.Print("Launching metadata svc")
-		if err := launchMetadataService(cfg.Debug); err != nil {
-			log.Printf("Failed to launch metadata svc: %v", err)
-		}
+		go func() {
+			if err := launchMetadataService(cfg.Debug); err != nil {
+				log.Printf("Failed to launch metadata svc: %v", err)
+			}
+		}()
 	}
 
 	log.Printf("Pivoting to filesystem %s", dir)
@@ -466,5 +468,5 @@ func launchMetadataService(debug bool) error {
 		Stderr: os.Stderr,
 	}
 
-	return cmd.Start()
+	return cmd.Run()
 }
