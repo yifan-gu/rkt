@@ -58,7 +58,7 @@ type PrepareConfig struct {
 	Volumes      []types.Volume      // list of volumes that rkt can provide to applications
 	Ports        []types.ExposedPort // list of ports that rkt will expose on the host
 	UseOverlay   bool                // prepare pod with overlay fs
-	PodManifest  string              // use the pod manifest specified by the user, this will ignore flags such as '--volume', '--port', etc.
+	PodManifest  *schema.PodManifest // use the pod manifest specified by the user.
 	PrivateUsers *uid.UidRange       // User namespaces
 }
 
@@ -200,17 +200,8 @@ func generatePodManifest(cfg PrepareConfig, dir string) ([]byte, error) {
 // the manifest as []byte.
 // TODO(yifan): More validation in the future.
 func validatePodManifest(cfg PrepareConfig, dir string) ([]byte, error) {
-	pmb, err := ioutil.ReadFile(cfg.PodManifest)
-	if err != nil {
-		return nil, fmt.Errorf("error reading pod manifest: %v", err)
-	}
-	var pm schema.PodManifest
-	if err := json.Unmarshal(pmb, &pm); err != nil {
-		return nil, fmt.Errorf("error unmarshaling pod manifest: %v", err)
-	}
-
 	appNames := make(map[types.ACName]struct{})
-	for _, ra := range pm.Apps {
+	for _, ra := range cfg.PodManifest.Apps {
 		img := ra.Image
 
 		am, err := cfg.Store.GetImageManifest(img.ID.String())
@@ -228,7 +219,7 @@ func validatePodManifest(cfg PrepareConfig, dir string) ([]byte, error) {
 			return nil, fmt.Errorf("error: no app section in the pod manifest or the image manifest")
 		}
 	}
-	return pmb, nil
+	return json.Marshal(cfg.PodManifest)
 }
 
 // Prepare sets up a pod based on the given config.
@@ -240,7 +231,7 @@ func Prepare(cfg PrepareConfig, dir string, uuid *types.UUID) error {
 
 	var pmb []byte
 	var err error
-	if len(cfg.PodManifest) > 0 {
+	if cfg.PodManifest != nil {
 		pmb, err = validatePodManifest(cfg, dir)
 	} else {
 		pmb, err = generatePodManifest(cfg, dir)
