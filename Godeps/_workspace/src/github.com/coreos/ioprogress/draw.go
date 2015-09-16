@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"golang.org/x/crypto/ssh/terminal"
+	"github.com/coreos/rkt/Godeps/_workspace/src/golang.org/x/crypto/ssh/terminal"
 )
 
 // DrawFunc is the callback type for drawing progress.
