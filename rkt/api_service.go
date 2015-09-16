@@ -16,6 +16,7 @@ package main
 
 import (
 	"bufio"
+	"container/ring"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -27,6 +28,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -43,6 +45,7 @@ import (
 
 const (
 	journalctlTimeFormat = "2006-01-02 15:04:05"
+	defaultEventLength   = 1024 // By default, only keep at most 1024 events in memory.
 )
 
 var (
@@ -63,6 +66,9 @@ func init() {
 // v1APIServer implements v1.APIServer interface.
 type v1APIServer struct {
 	store *store.Store
+
+	eventBufferRWLock *sync.RWMutex
+	eventBuffer       *ring.Ring
 }
 
 var _ v1.PublicAPIServer = &v1APIServer{}
@@ -73,7 +79,11 @@ func newV1APIServer() (*v1APIServer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &v1APIServer{store: s}, nil
+	return &v1APIServer{
+		store:             s,
+		eventBufferRWLock: new(sync.RWMutex),
+		eventBuffer:       ring.New(defaultEventLength),
+	}, nil
 }
 
 func (s *v1APIServer) GetInfo(context.Context, *v1.GetInfoRequest) (*v1.GetInfoResponse, error) {
@@ -495,7 +505,8 @@ func (s *v1APIServer) InspectImage(ctx context.Context, request *v1.InspectImage
 	return &v1.InspectImageResponse{Image: image}, nil
 }
 
-func (s *v1APIServer) ListenEvents(*v1.ListenEventsRequest, v1.PublicAPI_ListenEventsServer) error {
+func (s *v1APIServer) ListenEvents(request *v1.ListenEventsRequest, server v1.PublicAPI_ListenEventsServer) error {
+
 	return fmt.Errorf("Not implemented")
 }
 
@@ -586,8 +597,11 @@ func (s *v1APIServer) GetLogs(request *v1.GetLogsRequest, server v1.PublicAPI_Ge
 	return nil
 }
 
-func (s *v1APIServer) AddEvent(context.Context, *v1.AddEventRequest) (*v1.AddEventResponse, error) {
-	return nil, fmt.Errorf("Not implemented")
+func (s *v1APIServer) AddEvent(ctx context.Context, request *v1.AddEventRequest) (*v1.AddEventResponse, error) {
+	s.eventBufferRWLock.Lock()
+	defer s.eventBufferRWLock.Unlock()
+	s.eventBuffer.Value = request.Event
+	return nil, nil
 }
 
 func runAPIService(cmd *cobra.Command, args []string) (exit int) {
