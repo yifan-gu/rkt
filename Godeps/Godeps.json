@@ -72,11 +72,11 @@
 		},
 		{
 			"ImportPath": "github.com/appc/docker2aci/lib",
-			"Rev": "5a59e6910929afdeb54913c301692194d3160d09"
+			"Rev": "8ac8ccffacb8e2040cf94e3af9ca972766353d82"
 		},
 		{
 			"ImportPath": "github.com/appc/docker2aci/tarball",
-			"Rev": "5a59e6910929afdeb54913c301692194d3160d09"
+			"Rev": "8ac8ccffacb8e2040cf94e3af9ca972766353d82"
 		},
 		{
 			"ImportPath": "github.com/appc/goaci/proj2aci",
@@ -151,7 +151,7 @@
 		},
 		{
 			"ImportPath": "github.com/coreos/ioprogress",
-			"Rev": "326b3ee6276a33c8bdcf480ca9c99228942ab970"
+			"Rev": "e7fc03058804de5488baed8df5b89f3924b9ec9a"
 		},
 		{
 			"ImportPath": "github.com/cznic/b",
