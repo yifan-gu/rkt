@@ -63,12 +63,29 @@ func init() {
 	cmdAPIService.Flags().StringVar(&flagAPIServiceListenClientURL, "--listen-client-url", common.APIServiceListenClientURL, "address to listen on client API requests")
 }
 
+type eventBuffer struct {
+	mu      *sync.Mutex
+	cond    *sync.Cond
+	current *ring.Ring // current marks the position for coming event.
+	head    *ring.Ring // head marks the oldest event in the buffer.
+}
+
+func newEventBuffer(size int) *eventBuffer {
+	mu := new(sync.Mutex)
+	ring := ring.New(size)
+
+	return &eventBuffer{
+		mu:      mu,
+		cond:    sync.NewCond(mu),
+		current: ring,
+		head:    ring,
+	}
+}
+
 // v1APIServer implements v1.APIServer interface.
 type v1APIServer struct {
-	store *store.Store
-
-	eventBufferRWLock *sync.RWMutex
-	eventBuffer       *ring.Ring
+	store       *store.Store
+	eventBuffer *eventBuffer
 }
 
 var _ v1.PublicAPIServer = &v1APIServer{}
@@ -79,10 +96,10 @@ func newV1APIServer() (*v1APIServer, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &v1APIServer{
-		store:             s,
-		eventBufferRWLock: new(sync.RWMutex),
-		eventBuffer:       ring.New(defaultEventLength),
+		store:       s,
+		eventBuffer: newEventBuffer(defaultEventLength),
 	}, nil
 }
 
@@ -506,8 +523,46 @@ func (s *v1APIServer) InspectImage(ctx context.Context, request *v1.InspectImage
 }
 
 func (s *v1APIServer) ListenEvents(request *v1.ListenEventsRequest, server v1.PublicAPI_ListenEventsServer) error {
+	for {
+		s.eventBuffer.mu.Lock()
 
-	return fmt.Errorf("Not implemented")
+		// if since is specified. localCurrent = s.eventBuffer.head
+		localCurrent := s.eventBuffer.current
+
+		for {
+			// if has events or expired, break
+			s.eventBuffer.cond.Wait()
+		}
+
+		if expired {
+			// 'until_time' is reached.
+			s.eventBuffer.mu.Unlock()
+			return
+		}
+
+		// Copy events so we don't hold the lock too long.
+		var events []*v1.Event
+		for {
+			// filter the events.
+			events = append(events, localCurrent.Value.(*v1.Event))
+			localCurrent = localCurrent.Next()
+			if localCurrent == s.eventBuffer.current { // All events are read out.
+				break
+			}
+		}
+
+		s.eventBuffer.mu.Unlock()
+
+		// Send events.
+		for _, event := range events {
+			if err := server.Send(&v1.ListPodsResponse{Event: event}); err != nil {
+				log.Printf("Failed to send events: %v")
+				return
+			}
+		}
+	}
+
+	return nil
 }
 
 // TODO(yifan): Replace forking/execing 'journalctl' with journal API.
@@ -598,9 +653,19 @@ func (s *v1APIServer) GetLogs(request *v1.GetLogsRequest, server v1.PublicAPI_Ge
 }
 
 func (s *v1APIServer) AddEvent(ctx context.Context, request *v1.AddEventRequest) (*v1.AddEventResponse, error) {
-	s.eventBufferRWLock.Lock()
-	defer s.eventBufferRWLock.Unlock()
-	s.eventBuffer.Value = request.Event
+	eb := s.eventBuffer
+	// TODO(yifan): Don't block for lock, set a timeout.
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+	defer eb.cond.Broadcast()
+
+	eb.current.Value = request.Event
+	eb.current = eb.current.Next()
+
+	// When meet the buffer limit, move the buffer head to drop the oldest event.
+	if eb.current == eb.head {
+		eb.head = eb.head.Next()
+	}
 	return nil, nil
 }
 
