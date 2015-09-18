@@ -796,7 +796,7 @@ func (s *v1APIServer) AddEvent(ctx context.Context, request *v1.AddEventRequest)
 		return nil, fmt.Errorf("No events in the request")
 	}
 	s.eventBuffer.addEvent(request.Event)
-	return nil, nil
+	return &v1.AddEventResponse{}, nil
 }
 
 func runAPIService(cmd *cobra.Command, args []string) (exit int) {
