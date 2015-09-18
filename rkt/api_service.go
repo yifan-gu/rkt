@@ -45,7 +45,7 @@ import (
 
 const (
 	journalctlTimeFormat = "2006-01-02 15:04:05"
-	defaultEventLength   = 1024 // By default, only keep at most 1024 events in memory.
+	defaultEventCount    = 128 // The default number of events to keeps in memory.
 )
 
 var (
@@ -63,22 +63,88 @@ func init() {
 	cmdAPIService.Flags().StringVar(&flagAPIServiceListenClientURL, "--listen-client-url", common.APIServiceListenClientURL, "address to listen on client API requests")
 }
 
+// eventBuffer records all the events and listeners.
+// TODO(yifan): Move to separate package.
 type eventBuffer struct {
-	mu      *sync.Mutex
-	cond    *sync.Cond
-	current *ring.Ring // current marks the position for coming event.
-	head    *ring.Ring // head marks the oldest event in the buffer.
+	mu        sync.Mutex
+	current   *ring.Ring                 // current marks the position for coming event.
+	head      *ring.Ring                 // head marks the oldest event in the buffer.
+	listeners map[chan struct{}]struct{} // channels of the listeners.
 }
 
 func newEventBuffer(size int) *eventBuffer {
-	mu := new(sync.Mutex)
 	ring := ring.New(size)
 
 	return &eventBuffer{
-		mu:      mu,
-		cond:    sync.NewCond(mu),
-		current: ring,
-		head:    ring,
+		current:   ring,
+		head:      ring,
+		listeners: make(map[chan struct{}]struct{}),
+	}
+}
+
+// aggregateEvents returns all the events started from pointed by 'current' to the latest event.
+// It also returns a pointer that points to the position of the next future event.
+func (eb *eventBuffer) aggregateEvents(start *ring.Ring) (*ring.Ring, []*v1.Event) {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+
+	var events []*v1.Event
+	var current *ring.Ring
+
+	for current = start; current != eb.current; current = current.Next() {
+		events = append(events, current.Value.(*v1.Event))
+	}
+	return current, events
+}
+
+// registerListener registers an event listener and return historicall events if
+// readAllEvents is true.
+// It also returns a pointer that points to the position of the next future event.
+func (eb *eventBuffer) registerListener(ln chan struct{}, readAllEvents bool) (*ring.Ring, []*v1.Event) {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+
+	var events []*v1.Event
+
+	// Copy all happend events if necessary, this needs to be done
+	// at the same time as registering to avoid race.
+	current := eb.current
+	if readAllEvents {
+		current = eb.head
+	}
+	for ; current != eb.current; current = current.Next() {
+		events = append(events, current.Value.(*v1.Event))
+	}
+
+	// Register the listener.
+	eb.listeners[ln] = struct{}{}
+
+	return current, events
+}
+
+// deregisterListener removes the listener from the listener map.
+func (eb *eventBuffer) deregisterListener(ln chan struct{}) {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+	delete(eb.listeners, ln)
+}
+
+// addEvent adds a new event to the event buffer, and wakes up all the listeners.
+func (eb *eventBuffer) addEvent(event *v1.Event) {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+
+	eb.current.Value = event
+	eb.current = eb.current.Next()
+
+	// When meet the buffer limit, move the buffer head to drop the oldest event.
+	if eb.current == eb.head {
+		eb.head = eb.head.Next()
+	}
+
+	// Broadcast.
+	for ch := range eb.listeners {
+		ch <- struct{}{}
 	}
 }
 
@@ -99,7 +165,7 @@ func newV1APIServer() (*v1APIServer, error) {
 
 	return &v1APIServer{
 		store:       s,
-		eventBuffer: newEventBuffer(defaultEventLength),
+		eventBuffer: newEventBuffer(defaultEventCount),
 	}, nil
 }
 
@@ -522,47 +588,117 @@ func (s *v1APIServer) InspectImage(ctx context.Context, request *v1.InspectImage
 	return &v1.InspectImageResponse{Image: image}, nil
 }
 
-func (s *v1APIServer) ListenEvents(request *v1.ListenEventsRequest, server v1.PublicAPI_ListenEventsServer) error {
-	for {
-		s.eventBuffer.mu.Lock()
+// filterEvents returns true if the event doesn't satisfy the filter, which means
+// it should be filtered and not be returned.
+// It returns false if the filter is nil or the event satisfies the filter, which
+// means it should be returned.
+func filterEvent(event *v1.Event, filter *v1.EventFilter) bool {
+	// No filters, return directly.
+	if filter == nil {
+		return false
+	}
 
-		// if since is specified. localCurrent = s.eventBuffer.head
-		localCurrent := s.eventBuffer.current
-
-		for {
-			// if has events or expired, break
-			s.eventBuffer.cond.Wait()
-		}
-
-		if expired {
-			// 'until_time' is reached.
-			s.eventBuffer.mu.Unlock()
-			return
-		}
-
-		// Copy events so we don't hold the lock too long.
-		var events []*v1.Event
-		for {
-			// filter the events.
-			events = append(events, localCurrent.Value.(*v1.Event))
-			localCurrent = localCurrent.Next()
-			if localCurrent == s.eventBuffer.current { // All events are read out.
+	// Filter according to the types.
+	if len(filter.Types) > 0 {
+		foundType := false
+		for _, v := range filter.Types {
+			if event.Type == v {
+				foundType = true
 				break
 			}
 		}
-
-		s.eventBuffer.mu.Unlock()
-
-		// Send events.
-		for _, event := range events {
-			if err := server.Send(&v1.ListPodsResponse{Event: event}); err != nil {
-				log.Printf("Failed to send events: %v")
-				return
-			}
+		if !foundType {
+			return true
 		}
 	}
 
+	// Filter according to the ids.
+	if len(filter.Ids) > 0 {
+		if !findString(event.Id, filter.Ids, stringEqual) {
+			return true
+		}
+	}
+
+	// Filter according to the names.
+	if len(filter.Names) > 0 {
+		if !findString(event.From, filter.Names, stringEqual) {
+			return true
+		}
+	}
+
+	// Filter according to the since_time.
+	if filter.SinceTime > 0 {
+		if event.Time < filter.SinceTime {
+			return true
+		}
+	}
+
+	// Filter according to the until_time.
+	if filter.UntilTime > 0 {
+		if event.Time > filter.UntilTime {
+			return true
+		}
+	}
+
+	return false
+}
+
+func sendEvents(server v1.PublicAPI_ListenEventsServer, events []*v1.Event, filter *v1.EventFilter) error {
+	var filteredEvents []*v1.Event
+
+	for _, e := range events {
+		if !filterEvent(e, filter) {
+			filteredEvents = append(filteredEvents, e)
+		}
+	}
+
+	if len(filteredEvents) > 0 {
+		if err := server.Send(&v1.ListenEventsResponse{Events: filteredEvents}); err != nil {
+			log.Printf("Failed to send events: %v", err)
+			return err
+		}
+	}
 	return nil
+}
+
+func (s *v1APIServer) ListenEvents(request *v1.ListenEventsRequest, server v1.PublicAPI_ListenEventsServer) error {
+	filter := request.Filter
+	eb := s.eventBuffer
+
+	// Register the listener and get all history events if necessary.
+	readAllEvents := (filter != nil && filter.SinceTime > 0)
+	listener := make(chan struct{})
+
+	current, events := eb.registerListener(listener, readAllEvents)
+	defer eb.deregisterListener(listener)
+
+	// After getting any history events, send them.
+	if err := sendEvents(server, events, filter); err != nil {
+		return err
+	}
+
+	// Set up timer if 'until_time' is given.
+	timer := make(<-chan time.Time)
+	if filter != nil && filter.UntilTime > 0 {
+		// When duration is negative, timer will return immediately.
+		duration := time.Duration(filter.UntilTime-time.Now().Unix()) * time.Second
+		timer = time.After(duration)
+	}
+
+	// If 'until_time' is reached, send all events and return.
+	// If new events happen, send them.
+	for {
+		select {
+		case <-timer:
+			current, events = eb.aggregateEvents(current)
+			return sendEvents(server, events, filter)
+		case <-listener:
+			current, events = eb.aggregateEvents(current)
+			if err := sendEvents(server, events, filter); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 // TODO(yifan): Replace forking/execing 'journalctl' with journal API.
@@ -652,20 +788,14 @@ func (s *v1APIServer) GetLogs(request *v1.GetLogsRequest, server v1.PublicAPI_Ge
 	return nil
 }
 
+// TODO(yifan): Maybe use REST?
+// Note that AddEvent() can be block for a while. The sender should set a timeout for the request.
 func (s *v1APIServer) AddEvent(ctx context.Context, request *v1.AddEventRequest) (*v1.AddEventResponse, error) {
-	eb := s.eventBuffer
-	// TODO(yifan): Don't block for lock, set a timeout.
-	eb.mu.Lock()
-	defer eb.mu.Unlock()
-	defer eb.cond.Broadcast()
-
-	eb.current.Value = request.Event
-	eb.current = eb.current.Next()
-
-	// When meet the buffer limit, move the buffer head to drop the oldest event.
-	if eb.current == eb.head {
-		eb.head = eb.head.Next()
+	if request.Event == nil {
+		log.Printf("No events in the request")
+		return nil, fmt.Errorf("No events in the request")
 	}
+	s.eventBuffer.addEvent(request.Event)
 	return nil, nil
 }
 
