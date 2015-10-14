@@ -597,6 +597,12 @@ func runAPIService(cmd *cobra.Command, args []string) (exit int) {
 
 	log.Printf("API service running on %v...", flagAPIServiceListenClientURL)
 
+	defer func() {
+		if r := recover(); r != nil {
+			log.Print("recovered", r)
+		}
+	}()
+
 	signal.Notify(exitCh, syscall.SIGINT, syscall.SIGTERM)
 	<-exitCh
 
