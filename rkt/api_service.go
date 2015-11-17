@@ -599,7 +599,7 @@ func runAPIService(cmd *cobra.Command, args []string) (exit int) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Print("recovered", r)
+			log.Print("recovered panic", r)
 		}
 	}()
 
