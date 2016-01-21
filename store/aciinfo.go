@@ -62,17 +62,17 @@ func GetACIInfosWithKeyPrefix(tx *sql.Tx, prefix string) ([]*ACIInfo, error) {
 	var aciinfos []*ACIInfo
 	rows, err := tx.Query("SELECT * from aciinfo WHERE hasPrefix(blobkey, $1)", prefix)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query error %v", err)
 	}
 	for rows.Next() {
 		aciinfo := &ACIInfo{}
 		if err := aciinfoRowScan(rows, aciinfo); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("aciinforowscan error %v", err)
 		}
 		aciinfos = append(aciinfos, aciinfo)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("row error: %v", err)
 	}
 	return aciinfos, err
 }

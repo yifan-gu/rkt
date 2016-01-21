@@ -84,11 +84,12 @@ func NewDB(dbdir string) (*DB, error) {
 
 func (db *DB) Open() error {
 	if err := db.dl.lock(); err != nil {
-		return err
+		return fmt.Errorf("lock err %v", err)
 	}
 
 	sqldb, err := sql.Open("ql", filepath.Join(db.dbdir, DbFilename))
 	if err != nil {
+		err = fmt.Errorf("ql error %v", err)
 		unlockErr := db.dl.unlock()
 		if unlockErr != nil {
 			err = fmt.Errorf("[%s, %s]", err, unlockErr)
@@ -124,7 +125,7 @@ type txfunc func(*sql.Tx) error
 func (db *DB) Do(fns ...txfunc) error {
 	err := db.Open()
 	if err != nil {
-		return err
+		return fmt.Errorf("db open error: %v", err)
 	}
 	defer db.Close()
 

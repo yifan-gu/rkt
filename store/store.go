@@ -373,7 +373,10 @@ func (s *Store) ResolveKey(key string) (string, error) {
 	err := s.db.Do(func(tx *sql.Tx) error {
 		var err error
 		aciInfos, err = GetACIInfosWithKeyPrefix(tx, key)
-		return err
+		if err != nil {
+			return fmt.Errorf("get aci info error: %v", err)
+		}
+		return nil
 	})
 	if err != nil {
 		return "", fmt.Errorf("error retrieving ACI Infos: %v", err)
