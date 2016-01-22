@@ -35,7 +35,7 @@ func init() {
 func lockFcntl(name string) (io.Closer, error) {
 	abs, err := filepath.Abs(name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("abs error: %v", err)
 	}
 	lockmu.Lock()
 	if locked[abs] {
@@ -52,7 +52,7 @@ func lockFcntl(name string) (io.Closer, error) {
 
 	f, err := os.Create(name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("!!create error: %v", err)
 	}
 
 	// This type matches C's "struct flock" defined in /usr/include/bits/fcntl.h.
@@ -74,7 +74,7 @@ func lockFcntl(name string) (io.Closer, error) {
 	_, _, errno := syscall.Syscall(syscall.SYS_FCNTL, f.Fd(), uintptr(syscall.F_SETLK), uintptr(unsafe.Pointer(&k)))
 	if errno != 0 {
 		f.Close()
-		return nil, errno
+		return nil, fmt.Errorf("syscall error: %v", errno)
 	}
 	return &unlocker{f, abs}, nil
 }

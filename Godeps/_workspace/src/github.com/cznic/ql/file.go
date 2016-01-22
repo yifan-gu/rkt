@@ -389,17 +389,28 @@ type file struct {
 func newFileFromOSFile(f lldb.OSFile) (fi *file, err error) {
 	nm := lockName(f.Name())
 	lck, err := lock.Lock(nm)
+	fmt.Println("!!!lock, name", nm)
+
 	if err != nil {
+		fmt.Println("!!!lock error!, name", nm)
 		if lck != nil {
-			lck.Close()
+			fmt.Println("!!!unlock after (lock error)!, name", nm)
+			if err := lck.Close(); err != nil {
+				fmt.Println("!!!unlock error here!, name", nm)
+			}
 		}
 		return nil, err
 	}
 
+	fmt.Println("!!!lock ok, name", nm)
+
 	close := true
 	defer func() {
 		if close && lck != nil {
-			lck.Close()
+			fmt.Println("!!!defer close, name", nm)
+			if err := lck.Close(); err != nil {
+				fmt.Println("!!!defer close error, name", nm)
+			}
 		}
 	}()
 
@@ -594,6 +605,7 @@ func (s *file) Close() (err error) {
 		ew = s.wal.Close()
 	}
 	el := s.lck.Close()
+	fmt.Println("!!!lock close, err?", el)
 	return errSet(&err, es, ef, ew, el)
 }
 

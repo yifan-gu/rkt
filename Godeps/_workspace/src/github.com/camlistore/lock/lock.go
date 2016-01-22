@@ -60,7 +60,9 @@ func lockPortable(name string) (io.Closer, error) {
 	}
 	fi, err := os.Stat(absName)
 	if err == nil && fi.Size() > 0 {
+		fmt.Println("!!!found lock %v", absName)
 		if isStaleLock(absName) {
+			fmt.Println("!!!is stale lock")
 			os.Remove(absName)
 		} else {
 			return nil, fmt.Errorf("can't Lock file %q: has non-zero size", name)
@@ -71,7 +73,7 @@ func lockPortable(name string) (io.Closer, error) {
 		return nil, fmt.Errorf("failed to create lock file %s %v", absName, err)
 	}
 	if err := json.NewEncoder(f).Encode(&pidLockMeta{OwnerPID: os.Getpid()}); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("encode error!!! %v", err)
 	}
 	return &lockCloser{f: f, abs: absName}, nil
 }
