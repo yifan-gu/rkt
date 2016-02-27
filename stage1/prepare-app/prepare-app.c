@@ -155,6 +155,8 @@ int main(int argc, char *argv[])
 	};
 	static const mount_point files_mount_table[] = {
 		{ "/etc/rkt-resolv.conf", "/etc/resolv.conf", "bind", NULL, MS_BIND },
+                { "/etc/rkt-hosts", "/etc/hosts", "bind", NULL, MS_BIND },
+                { "/etc/rkt-hostname", "/etc/hostname", "bind", NULL, MS_BIND },
 	};
 	const char *root;
 	int rootfd;
@@ -199,8 +201,8 @@ int main(int argc, char *argv[])
 			"Failed to create directory \"%s/%s\"", root, d->name);
 	}
 
-	exit_if(!ensure_etc_hosts_exists(root, rootfd),
-		"Failed to ensure \"%s/etc/hosts\" exists", root);
+	//exit_if(!ensure_etc_hosts_exists(root, rootfd),
+	//	"Failed to ensure \"%s/etc/hosts\" exists", root);
 
 	close(rootfd);
 

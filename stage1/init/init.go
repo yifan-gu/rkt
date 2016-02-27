@@ -105,6 +105,7 @@ var (
 	localConfig  string
 	log          *rktlog.Logger
 	diag         *rktlog.Logger
+	hostname     string
 )
 
 func init() {
@@ -114,6 +115,9 @@ func init() {
 	flag.StringVar(&privateUsers, "private-users", "", "Run within user namespace. Can be set to [=UIDBASE[:NUIDS]]")
 	flag.StringVar(&mdsToken, "mds-token", "", "MDS auth token")
 	flag.StringVar(&localConfig, "local-config", common.DefaultLocalConfigDir, "Local config path")
+
+	flag.StringVar(&hostname, "hostname", "", "Host name")
+
 	// this ensures that main runs only on main thread (thread group leader).
 	// since namespace ops (unshare, setns) are done for a single thread, we
 	// must ensure that the goroutine does not jump from OS thread to thread
@@ -403,7 +407,7 @@ func getArgsEnv(p *stage1commontypes.Pod, flavor string, debug bool, n *networki
 		args = append(args, "--private-users="+privateUsers)
 	}
 
-	nsargs, err := stage1initcommon.PodToNspawnArgs(p)
+	nsargs, err := stage1initcommon.PodToNspawnArgs(p, hostname)
 	if err != nil {
 		return nil, nil, errwrap.Wrap(errors.New("failed to generate nspawn args"), err)
 	}
