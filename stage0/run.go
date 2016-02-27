@@ -24,6 +24,7 @@ package stage0
 //
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -92,6 +93,7 @@ type RunConfig struct {
 	DNS         []string       // DNS name servers to write in /etc/resolv.conf
 	DNSSearch   []string       // DNS search domains to write in /etc/resolv.conf
 	DNSOpt      []string       // DNS options to write in /etc/resolv.conf
+	Hostname    string
 }
 
 // configuration shared by both Run and Prepare
@@ -411,6 +413,15 @@ func addResolvConf(cfg RunConfig, rootfs string) {
 	}
 }
 
+func addHostname(hostname, rootfs string) {
+	var buffer bytes.Buffer
+
+	buffer.WriteString(hostname + "\n")
+	if err := ioutil.WriteFile(filepath.Join(rootfs, "etc/rkt-hostname"), buffer.Bytes(), 0644); err != nil {
+		log.Fatalf("error writing /etc/rkt-hostname: %v\n", err)
+	}
+}
+
 // Run mounts the right overlay filesystems and actually runs the prepared
 // pod by exec()ing the stage1 init inside the pod filesystem.
 func Run(cfg RunConfig, dir string, dataDir string) {
@@ -440,6 +451,9 @@ func Run(cfg RunConfig, dir string, dataDir string) {
 
 	if len(cfg.DNS) > 0 || len(cfg.DNSSearch) > 0 || len(cfg.DNSOpt) > 0 {
 		addResolvConf(cfg, destRootfs)
+	}
+	if cfg.Hostname != "" {
+		addHostname(cfg.Hostname, destRootfs)
 	}
 
 	if err := os.Setenv(common.EnvLockFd, fmt.Sprintf("%v", cfg.LockFd)); err != nil {
@@ -485,6 +499,10 @@ func Run(cfg RunConfig, dir string, dataDir string) {
 
 	if cfg.LocalConfig != "" {
 		args = append(args, "--local-config="+cfg.LocalConfig)
+	}
+
+	if cfg.Hostname != "" {
+		args = append(args, "--hostname="+cfg.Hostname)
 	}
 
 	args = append(args, cfg.UUID.String())

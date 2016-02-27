@@ -652,10 +652,14 @@ func appToNspawnArgs(p *stage1commontypes.Pod, ra *schema.RuntimeApp) ([]string,
 
 // PodToNspawnArgs renders a prepared Pod as a systemd-nspawn
 // argument list ready to be executed
-func PodToNspawnArgs(p *stage1commontypes.Pod) ([]string, error) {
+func PodToNspawnArgs(p *stage1commontypes.Pod, hostname string) ([]string, error) {
+	machineName := hostname
+	if machineName == "" {
+		machineName = GetMachineID(p)
+	}
 	args := []string{
 		"--uuid=" + p.UUID.String(),
-		"--machine=" + GetMachineID(p),
+		"--machine=" + machineName,
 		"--directory=" + common.Stage1RootfsPath(p.Root),
 	}
 

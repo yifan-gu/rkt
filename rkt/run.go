@@ -67,6 +67,7 @@ image arguments with a lone "---" to resume argument parsing.`,
 	flagPodManifest  string
 	flagMDSRegister  bool
 	flagUUIDFileSave string
+	flagHostname     string
 )
 
 func init() {
@@ -84,6 +85,7 @@ func init() {
 	cmdRun.Flags().Var(&flagDNS, "dns", "name servers to write in /etc/resolv.conf")
 	cmdRun.Flags().Var(&flagDNSSearch, "dns-search", "DNS search domains to write in /etc/resolv.conf")
 	cmdRun.Flags().Var(&flagDNSOpt, "dns-opt", "DNS options to write in /etc/resolv.conf")
+	cmdRun.Flags().StringVar(&flagHostname, "hostname", "", "set the hostname of the pod")
 	cmdRun.Flags().BoolVar(&flagStoreOnly, "store-only", false, "use only available images in the store (do not discover or download from remote URLs)")
 	cmdRun.Flags().BoolVar(&flagNoStore, "no-store", false, "fetch images ignoring the local store")
 	cmdRun.Flags().StringVar(&flagPodManifest, "pod-manifest", "", "the path to the pod manifest. If it's non-empty, then only '--net', '--no-overlay' and '--interactive' will have effect")
@@ -285,6 +287,7 @@ func runRun(cmd *cobra.Command, args []string) (exit int) {
 		DNS:          flagDNS,
 		DNSSearch:    flagDNSSearch,
 		DNSOpt:       flagDNSOpt,
+		Hostname:     flagHostname,
 		MDSRegister:  flagMDSRegister,
 		LocalConfig:  globalFlags.LocalConfigDir,
 		RktGid:       rktgid,
