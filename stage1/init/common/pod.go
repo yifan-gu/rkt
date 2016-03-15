@@ -565,6 +565,49 @@ func PodToSystemd(p *stage1commontypes.Pod, interactive bool, flavor string, pri
 	return nil
 }
 
+func evaluatePath(appRootfs, path string) (string, error) {
+	paths := strings.Split(path, "/")
+
+	link := appRootfs
+
+	for i, p := range paths {
+		next := filepath.Join(link, p)
+
+		fi, err := os.Lstat(next)
+		if err != nil {
+			if os.IsNotExist(err) {
+				link = filepath.Join(append([]string{link}, paths[i:]...)...)
+				break
+			}
+			return "", err
+		}
+
+		if fi.Mode()&os.ModeType != os.ModeSymlink {
+			link = filepath.Join(link, p)
+			continue
+		}
+
+		// Symlink.
+		target, err := os.Readlink(next)
+		if err != nil {
+			return "", err
+		}
+
+		if filepath.IsAbs(target) {
+			link = filepath.Join(appRootfs, target)
+		} else {
+			link = filepath.Join(link, target)
+		}
+
+		// Check the path after each iteration.
+		if !strings.HasPrefix(link, appRootfs) {
+			return "", fmt.Errorf("resolved path escaped app's root: %v", link)
+		}
+	}
+
+	return strings.TrimPrefix(link, appRootfs), nil
+}
+
 // appToNspawnArgs transforms the given app manifest, with the given associated
 // app name, into a subset of applicable systemd-nspawn argument
 func appToNspawnArgs(p *stage1commontypes.Pod, ra *schema.RuntimeApp) ([]string, error) {
@@ -614,20 +657,27 @@ func appToNspawnArgs(p *stage1commontypes.Pod, ra *schema.RuntimeApp) ([]string,
 			opt[0] = "--bind="
 		}
 
+		absRoot, err := filepath.Abs(p.Root)
+		if err != nil {
+			return nil, errwrap.Wrap(errors.New("cannot get pod's root absolute path"), err)
+		}
+
 		switch vol.Kind {
 		case "host":
 			opt[1] = vol.Source
 		case "empty":
-			absRoot, err := filepath.Abs(p.Root)
-			if err != nil {
-				return nil, errwrap.Wrap(errors.New("cannot get pod's root absolute path"), err)
-			}
 			opt[1] = filepath.Join(common.SharedVolumesPath(absRoot), vol.Name.String())
 		default:
 			return nil, fmt.Errorf(`invalid volume kind %q. Must be one of "host" or "empty"`, vol.Kind)
 		}
 		opt[2] = ":"
-		opt[3] = filepath.Join(common.RelAppRootfsPath(appName), m.Path)
+
+		mntPath, err := evaluatePath(filepath.Join(common.AppRootfsPath(absRoot, appName)), m.Path)
+		if err != nil {
+			return nil, fmt.Errorf("cannot evaluate path %v: %v", m.Path, err)
+		}
+
+		opt[3] = filepath.Join(common.RelAppRootfsPath(appName), mntPath)
 
 		args = append(args, strings.Join(opt, ""))
 	}
