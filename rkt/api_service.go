@@ -345,6 +345,14 @@ func getBasicPod(p *pod) (*v1alpha.Pod, *schema.PodManifest, error) {
 	pod.Apps = apps
 	pod.Annotations = convertAnnotationsToKeyValue(manifest.Annotations)
 
+	if pod.State == v1alpha.PodState_POD_STATE_RUNNING {
+		cgroup, err := p.getCgroup()
+		if err != nil {
+			return nil, nil, err
+		}
+		pod.Cgroup = cgroup
+	}
+
 	return pod, manifest, nil
 }
 

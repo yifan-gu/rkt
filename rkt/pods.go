@@ -17,6 +17,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -918,6 +919,36 @@ func (p *pod) getContainerPID1() (pid int, err error) {
 			return -1, err
 		}
 	}
+}
+
+// getCgroup returnes the cgroup of pod.
+// Note that that returned string is not a file path, i.e. it does not containes
+// '/sys/fs/cgroup' as a prefix.
+func (p *pod) getCgroup() (string, error) {
+	pid, err := p.getContainerPID1()
+	if err != nil {
+		return "", err
+	}
+
+	cgroupFile, err := os.Open(fmt.Sprintf("/proc/%d/cgroup", pid))
+	if err != nil {
+		return "", err
+	}
+	scanner := bufio.NewScanner(cgroupFile)
+	for scanner.Scan() {
+		// See man proc for the format of the cgroup files.
+		// Basically it's in the form of:
+		// [ID]:[subsystem]:[cgroup]
+		tuples := strings.Split(scanner.Text(), ":")
+
+		// Read the systemd cgroup.
+		// TODO(yifan): What if rkt runs on non-systemd system?
+		// Read the cgroup of 'ID == 1'?
+		if tuples[1] == "name=systemd" {
+			return tuples[2], nil
+		}
+	}
+	return "", fmt.Errorf("cannot find cgroup for pod %v", p.uuid)
 }
 
 // getStage1TreeStoreID returns the treeStoreID of the stage1 image used in
