@@ -894,14 +894,15 @@ func (p *pod) getContainerPID1() (pid int, err error) {
 		}
 
 		ppid, err = p.readIntFromFile("ppid")
+		if err != nil && !os.IsNotExist(err) {
+			return -1, err
+		}
 		if err == nil {
 			pid, err = getChildPID(ppid)
 			if err == nil {
 				return pid, nil
 			}
-			if _, ok := err.(ErrChildNotReady); ok {
-				err = nil
-			} else {
+			if _, ok := err.(ErrChildNotReady); !ok {
 				return -1, err
 			}
 		}
@@ -915,8 +916,8 @@ func (p *pod) getContainerPID1() (pid int, err error) {
 			return -1, err
 		}
 
-		if !os.IsNotExist(err) || !p.isRunning() {
-			return -1, err
+		if !p.isRunning() {
+			return -1, fmt.Errorf("pod %v is not running after refreshState()", p.uuid)
 		}
 	}
 }
