@@ -478,7 +478,7 @@ func (p *pod) xToExitedGarbage() error {
 	return nil
 }
 
-// xToGarbage transitions a pod from prepared -> garbage or prepared -> garbage
+// xToGarbage transitions a pod from abortedPrepared -> garbage or prepared -> garbage
 func (p *pod) xToGarbage() error {
 	if !p.isAbortedPrepare && !p.isPrepared {
 		return fmt.Errorf("bug: only failed prepare or prepared pods may transition to garbage")
@@ -676,6 +676,7 @@ func (p *pod) refreshState() error {
 
 // waitExited waits for a pod to (run and) exit.
 func (p *pod) waitExited() error {
+	// isExited implies isExitedGarbage.
 	for !p.isExited && !p.isAbortedPrepare && !p.isGarbage && !p.isGone {
 		if err := p.SharedLock(); err != nil {
 			return err
@@ -764,6 +765,7 @@ func (p *pod) getModTime(path string) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
+	defer f.Close()
 
 	fi, err := f.Stat()
 	if err != nil {
@@ -803,6 +805,45 @@ func (p *pod) getStartTime() (time.Time, error) {
 		}
 	}
 	return t, err
+}
+
+func (p *pod) getFinishTime() (time.Time, error) {
+	// Not exited, return zero.
+	if p.isEmbryo || p.isPreparing || p.isPrepared || p.isRunning() {
+		return time.Time{}, nil
+	}
+
+	// Exited or aborted, but haven't been moved to exited-garbage/garbage dir yet,
+	// so let's move it here.
+	var err error
+	if p.isExited && !p.isExitedGarbage {
+		err = p.xToExitedGarbage()
+	} else if p.isAbortedPrepare {
+		err = p.xToGarbage()
+	}
+
+	// Ignore the ENOENT, as 'rkt gc' might be moving the
+	// pod to exited-garbage/garbage dir.
+	if err != nil && !os.IsNotExist(err) {
+		return time.Time{}, err
+	}
+
+	// At this point, the pod is in either exited-garbage, garbage dir or gone.
+	podPath := p.path()
+	if podPath == "" {
+		// Pod is gone.
+		return time.Time{}, nil
+	}
+
+	st := &syscall.Stat_t{}
+	if err := syscall.Lstat(podPath, st); err != nil {
+		if err == syscall.ENOENT {
+			// Pod is gone.
+			err = nil
+		}
+		return time.Time{}, err
+	}
+	return time.Unix(st.Ctim.Unix()), nil
 }
 
 type ErrChildNotReady struct {
