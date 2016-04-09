@@ -81,18 +81,22 @@ func printStatus(p *pod) error {
 	if err != nil {
 		return errwrap.Wrap(fmt.Errorf("unable to get creation time for pod %q", p.uuid), err)
 	}
-	createdStr := created.Format(defaultTimeLayout)
-
-	stdout.Printf("created=%s", createdStr)
+	stdout.Printf("created=%s", created.Format(defaultTimeLayout))
 
 	started, err := p.getStartTime()
 	if err != nil {
 		return errwrap.Wrap(fmt.Errorf("unable to get start time for pod %q", p.uuid), err)
 	}
-	var startedStr string
 	if !started.IsZero() {
-		startedStr = started.Format(defaultTimeLayout)
-		stdout.Printf("started=%s", startedStr)
+		stdout.Printf("started=%s", started.Format(defaultTimeLayout))
+	}
+
+	finished, err := p.getFinishTime()
+	if err != nil {
+		return errwrap.Wrap(fmt.Errorf("unable to get finish time for pod %q", p.uuid), err)
+	}
+	if !finished.IsZero() {
+		stdout.Printf("finished=%s", finished.Format(defaultTimeLayout))
 	}
 
 	if p.isRunning() {

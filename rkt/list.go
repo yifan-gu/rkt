@@ -56,9 +56,9 @@ func runList(cmd *cobra.Command, args []string) int {
 
 	if !flagNoLegend {
 		if flagFullOutput {
-			fmt.Fprintf(tabOut, "UUID\tAPP\tIMAGE NAME\tIMAGE ID\tSTATE\tCREATED\tSTARTED\tNETWORKS\n")
+			fmt.Fprintf(tabOut, "UUID\tAPP\tIMAGE NAME\tIMAGE ID\tSTATE\tCREATED\tSTARTED\tFINISHED\tNETWORKS\n")
 		} else {
-			fmt.Fprintf(tabOut, "UUID\tAPP\tIMAGE NAME\tSTATE\tCREATED\tSTARTED\tNETWORKS\n")
+			fmt.Fprintf(tabOut, "UUID\tAPP\tIMAGE NAME\tSTATE\tCREATED\tSTARTED\tFINISHED\tNETWORKS\n")
 		}
 	}
 
@@ -85,14 +85,15 @@ func runList(cmd *cobra.Command, args []string) int {
 		}
 
 		type printedApp struct {
-			uuid    string
-			appName string
-			imgName string
-			imgID   string
-			state   string
-			nets    string
-			created string
-			started string
+			uuid     string
+			appName  string
+			imgName  string
+			imgID    string
+			state    string
+			nets     string
+			created  string
+			started  string
+			finished string
 		}
 
 		var appsToPrint []printedApp
@@ -124,6 +125,19 @@ func runList(cmd *cobra.Command, args []string) int {
 			}
 		}
 
+		finished, err := p.getFinishTime()
+		if err != nil {
+			errors = append(errors, errwrap.Wrap(fmt.Errorf("unable to get finish time for pod %q", uuid), err))
+		}
+		var finishedStr string
+		if !finished.IsZero() {
+			if flagFullOutput {
+				finishedStr = finished.Format(defaultTimeLayout)
+			} else {
+				finishedStr = humanize.Time(finished)
+			}
+		}
+
 		if !flagFullOutput {
 			uuid = uuid[:8]
 		}
@@ -140,14 +154,15 @@ func runList(cmd *cobra.Command, args []string) int {
 			}
 
 			appsToPrint = append(appsToPrint, printedApp{
-				uuid:    uuid,
-				appName: app.Name.String(),
-				imgName: imageName,
-				imgID:   imageID,
-				state:   state,
-				nets:    nets,
-				created: createdStr,
-				started: startedStr,
+				uuid:     uuid,
+				appName:  app.Name.String(),
+				imgName:  imageName,
+				imgID:    imageID,
+				state:    state,
+				nets:     nets,
+				created:  createdStr,
+				started:  startedStr,
+				finished: finishedStr,
 			})
 			// clear those variables so they won't be
 			// printed for another apps in the pod as they
@@ -157,15 +172,16 @@ func runList(cmd *cobra.Command, args []string) int {
 			nets = ""
 			createdStr = ""
 			startedStr = ""
+			finishedStr = ""
 		}
 		// if we reached that point, then it means that the
 		// pod and all its apps are valid, so they can be
 		// printed
 		for _, app := range appsToPrint {
 			if flagFullOutput {
-				fmt.Fprintf(tabOut, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", app.uuid, app.appName, app.imgName, app.imgID, app.state, app.created, app.started, app.nets)
+				fmt.Fprintf(tabOut, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", app.uuid, app.appName, app.imgName, app.imgID, app.state, app.created, app.started, app.finished, app.nets)
 			} else {
-				fmt.Fprintf(tabOut, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", app.uuid, app.appName, app.imgName, app.state, app.created, app.started, app.nets)
+				fmt.Fprintf(tabOut, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", app.uuid, app.appName, app.imgName, app.state, app.created, app.started, app.finished, app.nets)
 			}
 		}
 
