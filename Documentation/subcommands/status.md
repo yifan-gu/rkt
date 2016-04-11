@@ -4,11 +4,12 @@ Given a pod UUID, you can get the exit status of its apps.
 Note that the apps are prefixed by `app-`.
 
 ```
-$ rkt status 66ceb509
+$ rkt status 046b5bde
 state=exited
-created=2016-01-26 14:23:34.631 +0100 CET
-started=2016-01-26 14:23:34.744 +0100 CET
-pid=16964
+created=2016-04-11 16:47:04.909 -0700 PDT
+started=2016-04-11 16:47:05.129 -0700 PDT
+finished=2016-04-11 16:48:35.746 -0700 PDT
+pid=30380
 exited=true
 app-redis=0
 app-etcd=0
