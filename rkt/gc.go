@@ -55,7 +55,7 @@ func init() {
 	cmdRkt.AddCommand(cmdGC)
 	cmdGC.Flags().DurationVar(&flagGracePeriod, "grace-period", defaultGracePeriod, "duration to wait before discarding inactive pods from garbage")
 	cmdGC.Flags().DurationVar(&flagPreparedExpiration, "expire-prepared", defaultPreparedExpiration, "duration to wait before expiring prepared pods")
-	cmdGC.Flags().BoolVar(&flagMarkOnly, "mark-only", false, "if set to true, then the exited/aborted pods will be moved to the garbage directories without actually deleting them, this is useful for marking the exit time of a pod")
+	cmdGC.Flags().BoolVar(&flagMarkOnly, "mark-only", false, "if set to true, only the \"mark\" phase of the garbage collection process will be formed (i.e., exited/aborted pods will be moved to the garbage, but nothing will be deleted)")
 }
 
 func runGC(cmd *cobra.Command, args []string) (exit int) {
