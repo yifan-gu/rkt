@@ -150,6 +150,14 @@ AC_ARG_ENABLE([insecure-go],
               [RKT_INSECURE_GO="${enableval}"],
               [RKT_INSECURE_GO="no"])
 
+## Profile
+
+AC_ARG_ENABLE([profile],
+              [AS_HELP_STRING([--enable-profile],
+                              [enable building with CPU / Memory profile support for rkt commands, default: 'no'])],
+              [RKT_ENABLE_PROFILE="${enableval}"],
+              [RKT_ENABLE_PROFILE="no"])
+
 #### CHECKING
 
 ## STAGE1 - initial verification and setup
@@ -600,6 +608,20 @@ AS_CASE([${RKT_ENABLE_TPM}],
         [yes],
                 [RKT_ADD_FEATURE '+TPM'])
 
+PROFILE_TAGS=''
+AS_CASE([${RKT_ENABLE_PROFILE}],
+        [no],
+                dnl nothing to do
+                [:],
+        [yes],
+                [PROFILE_TAGS=profile],
+        [AC_MSG_ERROR([*** Invalid value passed to --enable-profile, should be either 'yes' or 'no'])])
+AS_CASE([${RKT_ENABLE_PROFILE}],
+        [no],
+                [RKT_ADD_FEATURE '-PROFILE'],
+        [yes],
+                [RKT_ADD_FEATURE '+PROFILE'])
+
 AC_LANG_POP([C])
 
 AC_PROG_INSTALL
@@ -696,6 +718,7 @@ AC_SUBST(RKT_VERSION_LDFLAGS)
 AC_SUBST(RKT_FEATURES_LDFLAGS)
 
 AC_SUBST(TPM_TAGS)
+AC_SUBST(PROFILE_TAGS)
 
 AC_SUBST(RKT_DEFINES_FOR_ENTER)
 

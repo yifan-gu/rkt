@@ -94,6 +94,9 @@ __custom_func() {
 
 type absDir string
 
+var cpuProfile string
+var memProfile string
+
 func (d *absDir) String() string {
 	return (string)(*d)
 }
@@ -172,6 +175,8 @@ func init() {
 	cmdRkt.PersistentFlags().BoolVar(&globalFlags.TrustKeysFromHTTPS, "trust-keys-from-https",
 		false, "automatically trust gpg keys fetched from https")
 
+	parseProfileFlags(cmdRkt)
+
 	// Run this before the execution of each subcommand to set up output
 	cmdRkt.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		stderr = log.New(os.Stderr, cmd.Name(), globalFlags.Debug)
@@ -194,6 +199,14 @@ func getTabOutWithWriter(writer io.Writer) *tabwriter.Writer {
 // terminator.
 func runWrapper(cf func(cmd *cobra.Command, args []string) (exit int)) func(cmd *cobra.Command, args []string) {
 	return func(cmd *cobra.Command, args []string) {
+		cpufile, memfile, err := startProfile()
+		if err != nil {
+			stderr.Printf("cannot setup profiling %v", err)
+			cmdExitCode = 1
+			return
+		}
+		defer stopProfile(cpufile, memfile)
+
 		cmdExitCode = cf(cmd, args)
 	}
 }
