@@ -154,4 +154,9 @@ This option to enable [logging to the TPM][rkt-tpm] is set by default. For loggi
 
 This option to allow building rkt with go having known security issues is unset by default. Use it with caution.
 
+### `--enable-profile`
+
+This option to enable building rkt with [CPU / Memory profile][rkt-profile] support for rkt commands.
+
 [rkt-tpm]: devel/tpm.md
+[rkt-profile]: performance/README.md#profiling
