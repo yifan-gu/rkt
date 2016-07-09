@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"sync"
 
 	"github.com/coreos/rkt/pkg/lock"
@@ -140,6 +142,10 @@ func (db *DB) Begin() (*sql.Tx, error) {
 
 type txfunc func(*sql.Tx) error
 
+func funcname(i interface{}) string {
+	return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
+}
+
 // Do Opens the db, executes DoTx and then Closes the DB
 func (db *DB) Do(fns ...txfunc) error {
 	err := db.Open()
@@ -147,6 +153,12 @@ func (db *DB) Do(fns ...txfunc) error {
 		return err
 	}
 	defer db.Close()
+
+	fmt.Println("db tx!!!")
+	for _, f := range fns {
+		fmt.Printf("fx %v", funcname(f))
+	}
+	fmt.Println()
 
 	return db.DoTx(fns...)
 }

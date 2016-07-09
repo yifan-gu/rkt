@@ -836,6 +836,9 @@ func runAPIService(cmd *cobra.Command, args []string) (exit int) {
 	}
 
 	v1alpha.RegisterPublicAPIServer(publicServer, v1AlphaAPIServer)
+	ret, err := v1AlphaAPIServer.store.ResolveKey("sha512-heheasdfasdfasd")
+	fmt.Println(ret, err)
+	return
 
 	go publicServer.Serve(tcpl)
 
