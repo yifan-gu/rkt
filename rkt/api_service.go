@@ -426,13 +426,18 @@ func fillStaticAppInfo(store *store.Store, p *pod, v1pod *v1alpha.Pod) error {
 func (s *v1AlphaAPIServer) getBasicPodFromDisk(p *pod) (*v1alpha.Pod, error) {
 	pod := &v1alpha.Pod{Id: p.uuid.String(), Pid: -1}
 
+	fmt.Println("before get basic pod manifest on disk!!")
 	manifest, data, err := s.getPodManifest(p)
 	if err != nil {
 		stderr.PrintE(fmt.Sprintf("failed to get the pod manifest for pod %q", p.uuid), err)
 	} else {
+		fmt.Println("before get basic pod annot on disk!!")
 		pod.Annotations = convertAnnotationsToKeyValue(manifest.Annotations)
+		fmt.Println("before get basic pod applist on disk!!")
 		pod.Apps = getApplist(manifest)
 		pod.Manifest = data
+
+		fmt.Println("before get basic static app info on disk!!")
 		err = fillStaticAppInfo(s.store, p, pod)
 	}
 
