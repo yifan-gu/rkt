@@ -177,7 +177,7 @@ func isPartOf(keyword, s string) bool {
 
 // satisfiesPodFilter returns true if the pod satisfies the filter.
 // The pod, filter must not be nil.
-func satisfiesPodFilter(pod v1alpha.Pod, filter v1alpha.PodFilter) bool {
+func satisfiesPodFilter(pod v1alpha.Pod, filter v1alpha.PodFilter, detail bool) bool {
 	// Filter according to the ID.
 	if len(filter.Ids) > 0 {
 		s := set.NewString(filter.Ids...)
@@ -186,16 +186,9 @@ func satisfiesPodFilter(pod v1alpha.Pod, filter v1alpha.PodFilter) bool {
 		}
 	}
 
-	// Filter according to the state.
-	if len(filter.States) > 0 {
-		foundState := false
-		for _, state := range filter.States {
-			if pod.State == state {
-				foundState = true
-				break
-			}
-		}
-		if !foundState {
+	// Filter according to the annotations.
+	if len(filter.Annotations) > 0 {
+		if !containsAllKeyValues(pod.Annotations, filter.Annotations) {
 			return false
 		}
 	}
@@ -222,6 +215,24 @@ func satisfiesPodFilter(pod v1alpha.Pod, filter v1alpha.PodFilter) bool {
 		}
 	}
 
+	if !detail {
+		return true
+	}
+
+	// Filter according to the state.
+	if len(filter.States) > 0 {
+		foundState := false
+		for _, state := range filter.States {
+			if pod.State == state {
+				foundState = true
+				break
+			}
+		}
+		if !foundState {
+			return false
+		}
+	}
+
 	// Filter according to the network names.
 	if len(filter.NetworkNames) > 0 {
 		s := set.NewString()
@@ -229,13 +240,6 @@ func satisfiesPodFilter(pod v1alpha.Pod, filter v1alpha.PodFilter) bool {
 			s.Insert(network.Name)
 		}
 		if !s.HasAll(filter.NetworkNames...) {
-			return false
-		}
-	}
-
-	// Filter according to the annotations.
-	if len(filter.Annotations) > 0 {
-		if !containsAllKeyValues(pod.Annotations, filter.Annotations) {
 			return false
 		}
 	}
@@ -270,18 +274,30 @@ func satisfiesPodFilter(pod v1alpha.Pod, filter v1alpha.PodFilter) bool {
 
 // satisfiesAnyPodFilters returns true if any of the filter conditions is satisfied
 // by the pod, or there's no filters.
-func satisfiesAnyPodFilters(pod *v1alpha.Pod, filters []*v1alpha.PodFilter) bool {
+func satisfiesAnyPodFilters(pod *v1alpha.Pod, filters []*v1alpha.PodFilter, detail bool) bool {
 	// No filters, return true directly.
 	if len(filters) == 0 {
 		return true
 	}
 
 	for _, filter := range filters {
-		if satisfiesPodFilter(*pod, *filter) {
+		if satisfiesPodFilter(*pod, *filter, detail) {
 			return true
 		}
 	}
 	return false
+}
+
+// satisfiesAnyDetailedPodFilters returns true if any of the filter conditions is satisfied
+// by the pod, or there's no filters.
+func satisfiesAnyDetailedPodFilters(pod *v1alpha.Pod, filters []*v1alpha.PodFilter) bool {
+	return satisfiesAnyPodFilters(pod, filters, true)
+}
+
+// satisfiesAnyBasicPodFilters returns true if any of the filter conditions is satisfied
+// by the pod, or there's no filters.
+func satisfiesAnyBasicPodFilters(pod *v1alpha.Pod, filters []*v1alpha.PodFilter) bool {
+	return satisfiesAnyPodFilters(pod, filters, false)
 }
 
 // getPodManifest returns the pod manifest of the pod.
@@ -441,7 +457,10 @@ func (s *v1AlphaAPIServer) getBasicPod(p *pod) *v1alpha.Pod {
 		}
 	}
 
+	fmt.Println("before get basic pod on disk!!")
+
 	pod, err1 := s.getBasicPodFromDisk(p)
+	fmt.Println("after get basic pod on disk!!")
 	if err != nil || err1 != nil {
 		// If any error happens or the mtime is unknown,
 		// returns the raw pod directly without adding it to the cache.
@@ -590,14 +609,23 @@ func fillPodDetails(store *store.Store, p *pod, v1pod *v1alpha.Pod) {
 func (s *v1AlphaAPIServer) ListPods(ctx context.Context, request *v1alpha.ListPodsRequest) (*v1alpha.ListPodsResponse, error) {
 	var pods []*v1alpha.Pod
 	if err := walkPods(includeMostDirs, func(p *pod) {
+		fmt.Println("before get basick!!!", p.uuid)
+
 		pod := s.getBasicPod(p)
+		fmt.Println("before pod detail!!!", p.uuid)
+
+		if !satisfiesAnyBasicPodFilters(pod, request.Filters) {
+			return
+		}
 
 		fillPodDetails(s.store, p, pod)
 
+		fmt.Println("before satisfy pod!!!", p.uuid)
 		// Filters are combined with 'OR'.
-		if !satisfiesAnyPodFilters(pod, request.Filters) {
+		if !satisfiesAnyDetailedPodFilters(pod, request.Filters) {
 			return
 		}
+		fmt.Println("after satisfy pod!!!", p.uuid)
 
 		if !request.Detail {
 			pod.Manifest = nil
@@ -608,6 +636,8 @@ func (s *v1AlphaAPIServer) ListPods(ctx context.Context, request *v1alpha.ListPo
 		stderr.PrintE("failed to list pod", err)
 		return nil, err
 	}
+	fmt.Println("before return")
+
 	return &v1alpha.ListPodsResponse{Pods: pods}, nil
 }
 

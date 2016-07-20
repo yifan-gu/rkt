@@ -123,11 +123,13 @@ func walkPods(include includeMask, f func(*pod)) error {
 			stderr.PrintE(fmt.Sprintf("skipping %q", uuid), err)
 			continue
 		}
+		fmt.Println("before get pod!!!")
 		p, err := getPod(u)
 		if err != nil {
 			stderr.PrintE(fmt.Sprintf("skipping %q", uuid), err)
 			continue
 		}
+		fmt.Println("after get pod!!!")
 
 		// omit pods found in unrequested states
 		// this is to cover a race between listPods finding the uuids and pod states changing
@@ -143,7 +145,9 @@ func walkPods(include includeMask, f func(*pod)) error {
 		}
 
 		f(p)
+		fmt.Println("before close  pod!!!")
 		p.Close()
+		fmt.Println("after close  pod!!!")
 	}
 
 	return nil

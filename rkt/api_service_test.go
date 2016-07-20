@@ -257,7 +257,7 @@ func TestFilterPodAny(t *testing.T) {
 	}
 
 	for i, tt := range tests {
-		result := satisfiesAnyPodFilters(tt.pod, tt.filters)
+		result := satisfiesAnyPodFilters(tt.pod, tt.filters, true)
 		if result != tt.result {
 			t.Errorf("#%d: got %v, want %v", i, result, tt.result)
 		}

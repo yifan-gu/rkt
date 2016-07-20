@@ -97,10 +97,11 @@ func getLogsWithFollow(c v1alpha.PublicAPIClient, p *v1alpha.Pod) {
 }
 
 func main() {
-	followFlag := flag.Bool("follow", false, "enable 'follow' option on GetLogs")
+	//followFlag := flag.Bool("follow", false, "enable 'follow' option on GetLogs")
+	address := flag.String("address", "localhost:15441", "api address")
 	flag.Parse()
 
-	conn, err := grpc.Dial("localhost:15441", grpc.WithInsecure())
+	conn, err := grpc.Dial(*address, grpc.WithInsecure())
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -112,11 +113,11 @@ func main() {
 	podResp, err := c.ListPods(context.Background(), &v1alpha.ListPodsRequest{
 		// Specify the request: Fetch and print only running pods and their details.
 		Detail: true,
-		Filters: []*v1alpha.PodFilter{
-			{
-				States: []v1alpha.PodState{v1alpha.PodState_POD_STATE_RUNNING},
-			},
-		},
+		//Filters: []*v1alpha.PodFilter{
+		//	{
+		//		States: []v1alpha.PodState{v1alpha.PodState_POD_STATE_RUNNING},
+		//	},
+		//},
 	})
 	if err != nil {
 		fmt.Println(err)
@@ -124,31 +125,33 @@ func main() {
 	}
 
 	for _, p := range podResp.Pods {
-		if *followFlag {
-			fmt.Printf("Pod %q is running. Following logs:\n", p.Id)
-			getLogsWithFollow(c, p)
-		} else {
-			fmt.Printf("Pod %q is running.\n", p.Id)
-			getLogsWithoutFollow(c, p)
-		}
+		fmt.Println(p)
+
+		//if *followFlag {
+		//	fmt.Printf("Pod %q is running. Following logs:\n", p.Id)
+		//	getLogsWithFollow(c, p)
+		//} else {
+		//	fmt.Printf("Pod %q is running.\n", p.Id)
+		//	getLogsWithoutFollow(c, p)
+		//}
 	}
 
 	// List images.
-	imgResp, err := c.ListImages(context.Background(), &v1alpha.ListImagesRequest{
-		// In this request, we fetch the details of images whose names are prefixed with "coreos.com".
-		Detail: true,
-		Filters: []*v1alpha.ImageFilter{
-			{
-				Prefixes: []string{"coreos.com"},
-			},
-		},
-	})
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	for _, im := range imgResp.Images {
-		fmt.Printf("Found image %q\n", im.Name)
-	}
+	//imgResp, err := c.ListImages(context.Background(), &v1alpha.ListImagesRequest{
+	//	// In this request, we fetch the details of images whose names are prefixed with "coreos.com".
+	//	Detail: true,
+	//	Filters: []*v1alpha.ImageFilter{
+	//		{
+	//			Prefixes: []string{"coreos.com"},
+	//		},
+	//	},
+	//})
+	//if err != nil {
+	//	fmt.Println(err)
+	//	os.Exit(1)
+	//}
+	//
+	//for _, im := range imgResp.Images {
+	//	fmt.Printf("Found image %q\n", im.Name)
+	//}
 }
