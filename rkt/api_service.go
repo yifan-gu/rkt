@@ -73,8 +73,9 @@ func init() {
 }
 
 type podCacheItem struct {
-	pod   *v1alpha.Pod
-	mtime time.Time
+	pod      *v1alpha.Pod
+	manifest *schema.PodManifest
+	mtime    time.Time
 }
 
 // copyPod copies the immutable information of the pod into the new pod.
@@ -177,13 +178,24 @@ func isPartOf(keyword, s string) bool {
 
 // satisfiesPodFilter returns true if the pod satisfies the filter.
 // The pod, filter must not be nil.
-func satisfiesPodFilter(pod v1alpha.Pod, filter v1alpha.PodFilter) bool {
+func satisfiesPodFilter(pod v1alpha.Pod, filter v1alpha.PodFilter, detail bool) bool {
 	// Filter according to the ID.
 	if len(filter.Ids) > 0 {
 		s := set.NewString(filter.Ids...)
 		if !s.Has(pod.Id) {
 			return false
 		}
+	}
+
+	// Filter according to the annotations.
+	if len(filter.Annotations) > 0 {
+		if !containsAllKeyValues(pod.Annotations, filter.Annotations) {
+			return false
+		}
+	}
+
+	if !detail {
+		return true
 	}
 
 	// Filter according to the state.
@@ -233,13 +245,6 @@ func satisfiesPodFilter(pod v1alpha.Pod, filter v1alpha.PodFilter) bool {
 		}
 	}
 
-	// Filter according to the annotations.
-	if len(filter.Annotations) > 0 {
-		if !containsAllKeyValues(pod.Annotations, filter.Annotations) {
-			return false
-		}
-	}
-
 	// Filter according to the cgroup.
 	if len(filter.Cgroups) > 0 {
 		s := set.NewString(filter.Cgroups...)
@@ -270,18 +275,28 @@ func satisfiesPodFilter(pod v1alpha.Pod, filter v1alpha.PodFilter) bool {
 
 // satisfiesAnyPodFilters returns true if any of the filter conditions is satisfied
 // by the pod, or there's no filters.
-func satisfiesAnyPodFilters(pod *v1alpha.Pod, filters []*v1alpha.PodFilter) bool {
+//
+// If 'detail' is false, only basic filters(pod ID, annotation) will be tested.
+func satisfiesAnyPodFilters(pod *v1alpha.Pod, filters []*v1alpha.PodFilter, detail bool) bool {
 	// No filters, return true directly.
 	if len(filters) == 0 {
 		return true
 	}
 
 	for _, filter := range filters {
-		if satisfiesPodFilter(*pod, *filter) {
+		if satisfiesPodFilter(*pod, *filter, detail) {
 			return true
 		}
 	}
 	return false
+}
+
+func satisfiesAnyBasicPodFilters(pod *v1alpha.Pod, filters []*v1alpha.PodFilter) bool {
+	return satisfiesAnyPodFilters(pod, filters, false)
+}
+
+func satisfiesAnyDetailedPodFilters(pod *v1alpha.Pod, filters []*v1alpha.PodFilter) bool {
+	return satisfiesAnyPodFilters(pod, filters, true)
 }
 
 // getPodManifest returns the pod manifest of the pod.
@@ -304,29 +319,67 @@ func (s *v1AlphaAPIServer) getPodManifest(p *pod) (*schema.PodManifest, []byte, 
 	return &manifest, data, nil
 }
 
+type errs struct {
+	errs []error
+}
+
+// Error is part of the error interface.
+func (e errs) Error() string {
+	return fmt.Sprintf("%v", e.errs)
+}
+
 // getApplist returns a list of apps in the pod.
-func getApplist(manifest *schema.PodManifest) []*v1alpha.App {
+func getApplist(store *store.Store, manifest *schema.PodManifest, p *pod) ([]*v1alpha.App, error) {
+	var errlist []error
 	var apps []*v1alpha.App
+
 	for _, app := range manifest.Apps {
-		img := &v1alpha.Image{
-			BaseFormat: &v1alpha.ImageFormat{
-				// Only support appc image now. If it's a docker image, then it
-				// will be transformed to appc before storing in the disk store.
-				Type:    v1alpha.ImageType_IMAGE_TYPE_APPC,
-				Version: schema.AppContainerVersion.String(),
-			},
-			Id: app.Image.ID.String(),
-			// Only image format and image ID are returned in 'ListPods()'.
+		// Fill app's image info (id, name, version).
+		var imgID, imgName, imgVersion string
+		var err error
+
+		imgID, err = store.ResolveKey(app.Image.ID.String())
+		if err != nil {
+			stderr.PrintE(fmt.Sprintf("failed to resolve the image ID %q", app.Image.ID), err)
+			errlist = append(errlist, err)
+			imgID = app.Image.ID.String() // Fallback to the original image ID.
+		}
+
+		im, err := p.getAppImageManifest(app.Name)
+		if err != nil {
+			stderr.PrintE(fmt.Sprintf("failed to get image manifests for app %q", app.Name), err)
+			errlist = append(errlist, err)
+		} else {
+			imgName = im.Name.String()
+
+			version, ok := im.Labels.Get("version")
+			if !ok {
+				version = "latest"
+			}
+			imgVersion = version
 		}
 
 		apps = append(apps, &v1alpha.App{
 			Name:        app.Name.String(),
-			Image:       img,
 			Annotations: convertAnnotationsToKeyValue(app.Annotations),
-			// State and exit code are not returned in 'ListPods()'.
+			Image: &v1alpha.Image{
+				BaseFormat: &v1alpha.ImageFormat{
+					// Only support appc image now. If it's a docker image, then it
+					// will be transformed to appc before storing in the disk store.
+					Type:    v1alpha.ImageType_IMAGE_TYPE_APPC,
+					Version: schema.AppContainerVersion.String(),
+				},
+				Id:      imgID,
+				Name:    imgName,
+				Version: imgVersion,
+			},
 		})
 	}
-	return apps
+
+	if len(errlist) != 0 {
+		return nil, errs{errlist}
+	}
+	return apps, nil
 }
 
 // getNetworks returns the list of the info of the network that the pod belongs to.
@@ -342,62 +395,7 @@ func getNetworks(p *pod) []*v1alpha.Network {
 	return networks
 }
 
-type errs struct {
-	errs []error
-}
-
-// Error is part of the error interface.
-func (e errs) Error() string {
-	return fmt.Sprintf("%v", e.errs)
-}
-
-func fillStaticAppInfo(store *store.Store, p *pod, v1pod *v1alpha.Pod) error {
-	var errlist []error
-
-	// Fill static app image info.
-	for _, app := range v1pod.Apps {
-		// Fill app's image info (id, name, version).
-		fullImageID, err := store.ResolveKey(app.Image.Id)
-		if err != nil {
-			stderr.PrintE(fmt.Sprintf("failed to resolve the image ID %q", app.Image.Id), err)
-			errlist = append(errlist, err)
-		}
-
-		// The following information is always known
-		app.Image = &v1alpha.Image{
-			BaseFormat: &v1alpha.ImageFormat{
-				// Only support appc image now. If it's a docker image, then it
-				// will be transformed to appc before storing in the disk store.
-				Type:    v1alpha.ImageType_IMAGE_TYPE_APPC,
-				Version: schema.AppContainerVersion.String(),
-			},
-			Id: fullImageID,
-			// Other information are not available because they require the image
-			// info from store. Some of it is filled in below if possible.
-		}
-
-		im, err := p.getAppImageManifest(*types.MustACName(app.Name))
-		if err != nil {
-			stderr.PrintE(fmt.Sprintf("failed to get image manifests for app %q", app.Name), err)
-			errlist = append(errlist, err)
-		} else {
-			app.Image.Name = im.Name.String()
-
-			version, ok := im.Labels.Get("version")
-			if !ok {
-				version = "latest"
-			}
-			app.Image.Version = version
-		}
-	}
-
-	if len(errlist) != 0 {
-		return errs{errlist}
-	}
-	return nil
-}
-
-func (s *v1AlphaAPIServer) getBasicPodFromDisk(p *pod) (*v1alpha.Pod, error) {
+func (s *v1AlphaAPIServer) getBasicPodFromDisk(p *pod) (*v1alpha.Pod, *schema.PodManifest, error) {
 	pod := &v1alpha.Pod{Id: p.uuid.String(), Pid: -1}
 
 	manifest, data, err := s.getPodManifest(p)
@@ -405,16 +403,14 @@ func (s *v1AlphaAPIServer) getBasicPodFromDisk(p *pod) (*v1alpha.Pod, error) {
 		stderr.PrintE(fmt.Sprintf("failed to get the pod manifest for pod %q", p.uuid), err)
 	} else {
 		pod.Annotations = convertAnnotationsToKeyValue(manifest.Annotations)
-		pod.Apps = getApplist(manifest)
 		pod.Manifest = data
-		err = fillStaticAppInfo(s.store, p, pod)
 	}
 
-	return pod, err
+	return pod, manifest, err
 }
 
 // getBasicPod returns v1alpha.Pod with basic pod information.
-func (s *v1AlphaAPIServer) getBasicPod(p *pod) *v1alpha.Pod {
+func (s *v1AlphaAPIServer) getBasicPod(p *pod) (*v1alpha.Pod, *schema.PodManifest, time.Time) {
 	mtime, mtimeErr := p.getModTime("pod")
 	if mtimeErr != nil {
 		stderr.PrintE(fmt.Sprintf("failed to read the pod manifest's mtime for pod %q", p.uuid), mtimeErr)
@@ -427,22 +423,22 @@ func (s *v1AlphaAPIServer) getBasicPod(p *pod) *v1alpha.Pod {
 
 		// Check the mtime to make sure we are not returning stale manifests.
 		if !mtime.After(cacheItem.mtime) {
-			return copyPod(cacheItem.pod)
+			return copyPod(cacheItem.pod), cacheItem.manifest, cacheItem.mtime
 		}
 	}
 
-	pod, err := s.getBasicPodFromDisk(p)
+	pod, manifest, err := s.getBasicPodFromDisk(p)
 	if mtimeErr != nil || err != nil {
 		// If any error happens or the mtime is unknown,
 		// returns the raw pod directly without adding it to the cache.
-		return pod
+		return pod, manifest, time.Time{}
 	}
 
-	cacheItem := &podCacheItem{pod, mtime}
+	cacheItem := &podCacheItem{pod, manifest, mtime}
 	s.podCache.Add(p.uuid.String(), cacheItem)
 
 	// Return a copy of the pod, so the cached pod is not mutated later.
-	return copyPod(cacheItem.pod)
+	return copyPod(cacheItem.pod), manifest, mtime
 }
 
 func waitForMachinedRegistration(uuid string) error {
@@ -579,12 +575,25 @@ func fillPodDetails(store *store.Store, p *pod, v1pod *v1alpha.Pod) {
 func (s *v1AlphaAPIServer) ListPods(ctx context.Context, request *v1alpha.ListPodsRequest) (*v1alpha.ListPodsResponse, error) {
 	var pods []*v1alpha.Pod
 	if err := walkPods(includeMostDirs, func(p *pod) {
-		pod := s.getBasicPod(p)
+		var err error
+
+		pod, manifest, mtime := s.getBasicPod(p)
+
+		if !satisfiesAnyBasicPodFilters(pod, request.Filters) {
+			return
+		}
+
+		if pod.Apps == nil && manifest != nil {
+			pod.Apps, err = getApplist(s.store, manifest, p)
+			if err != nil && !mtime.IsZero() {
+				s.podCache.Add(p.uuid.String(), &podCacheItem{copyPod(pod), manifest, mtime})
+			}
+		}
 
 		fillPodDetails(s.store, p, pod)
 
 		// Filters are combined with 'OR'.
-		if !satisfiesAnyPodFilters(pod, request.Filters) {
+		if !satisfiesAnyDetailedPodFilters(pod, request.Filters) {
 			return
 		}
 
@@ -614,7 +623,13 @@ func (s *v1AlphaAPIServer) InspectPod(ctx context.Context, request *v1alpha.Insp
 	}
 	defer p.Close()
 
-	pod := s.getBasicPod(p)
+	pod, manifest, mtime := s.getBasicPod(p)
+	if pod.Apps == nil {
+		pod.Apps, err = getApplist(s.store, manifest, p)
+		if err != nil && !mtime.IsZero() {
+			s.podCache.Add(p.uuid.String(), &podCacheItem{copyPod(pod), manifest, mtime})
+		}
+	}
 
 	fillPodDetails(s.store, p, pod)
 
