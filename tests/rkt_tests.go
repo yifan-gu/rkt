@@ -661,12 +661,12 @@ func getImageInfo(t *testing.T, ctx *testutils.RktRunCtx, imageID string) *image
 	return imgInfo
 }
 
-func newAPIClientOrFail(t *testing.T, address string) (v1alpha.PublicReadOnlyAPIClient, *grpc.ClientConn) {
+func newAPIClientOrFail(t *testing.T, address string) (v1alpha.PublicAPIClient, *grpc.ClientConn) {
 	conn, err := grpc.Dial(address, grpc.WithInsecure())
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	c := v1alpha.NewPublicReadOnlyAPIClient(conn)
+	c := v1alpha.NewPublicAPIClient(conn)
 	return c, conn
 }
 

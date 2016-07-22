@@ -29,7 +29,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-func setup() (*testutils.RktRunCtx, *gexpect.ExpectSubprocess, v1alpha.PublicReadOnlyAPIClient, *grpc.ClientConn, string) {
+func setup() (*testutils.RktRunCtx, *gexpect.ExpectSubprocess, v1alpha.PublicAPIClient, *grpc.ClientConn, string) {
 	t := new(testing.T) // Print no messages.
 	ctx := testutils.NewRktRunCtx()
 	svc := startAPIService(t, ctx)
@@ -62,7 +62,7 @@ func launchPods(ctx *testutils.RktRunCtx, numOfPods int, imagePath string) {
 	wg.Wait()
 }
 
-func benchListPods(b *testing.B, c v1alpha.PublicReadOnlyAPIClient, detail bool) {
+func benchListPods(b *testing.B, c v1alpha.PublicAPIClient, detail bool) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := c.ListPods(context.Background(), &v1alpha.ListPodsRequest{Detail: detail})
@@ -73,7 +73,7 @@ func benchListPods(b *testing.B, c v1alpha.PublicReadOnlyAPIClient, detail bool)
 	b.StopTimer()
 }
 
-func benchInspectPod(b *testing.B, c v1alpha.PublicReadOnlyAPIClient) {
+func benchInspectPod(b *testing.B, c v1alpha.PublicAPIClient) {
 	resp, err := c.ListPods(context.Background(), &v1alpha.ListPodsRequest{})
 	if err != nil {
 		b.Fatalf("Unexpected error: %v", err)
@@ -106,7 +106,7 @@ func fetchImages(ctx *testutils.RktRunCtx, numOfImages int) {
 	wg.Wait()
 }
 
-func benchListImages(b *testing.B, c v1alpha.PublicReadOnlyAPIClient, detail bool) {
+func benchListImages(b *testing.B, c v1alpha.PublicAPIClient, detail bool) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := c.ListImages(context.Background(), &v1alpha.ListImagesRequest{Detail: detail})
@@ -117,7 +117,7 @@ func benchListImages(b *testing.B, c v1alpha.PublicReadOnlyAPIClient, detail boo
 	b.StopTimer()
 }
 
-func benchInspectImage(b *testing.B, c v1alpha.PublicReadOnlyAPIClient) {
+func benchInspectImage(b *testing.B, c v1alpha.PublicAPIClient) {
 	resp, err := c.ListImages(context.Background(), &v1alpha.ListImagesRequest{})
 	if err != nil {
 		b.Fatalf("Unexpected error: %v", err)
