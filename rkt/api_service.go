@@ -95,6 +95,26 @@ func runAPIService(cmd *cobra.Command, args []string) (exit int) {
 
 	v1alpha.RegisterPublicAPIServer(publicServer, v1alphaReadOnlyAPIServer)
 
+	// Register write-only APIs only if all the sockets are unix sockets.
+	allUnixListeners := true
+loop:
+	for _, l := range listeners {
+		switch l.(type) {
+		case *net.UnixListener:
+		default:
+			allUnixListeners = false
+			break loop
+		}
+	}
+	if allUnixListeners {
+		v1alphaWriteOnlyAPIServer, err := newV1alphaWriteOnlyAPIServer(store)
+		if err != nil {
+			stderr.PrintE("failed to create write-only API service", err)
+			return 1
+		}
+		v1alpha.RegisterPublicWriteOnlyAPIServer(publicServer, v1alphaWriteOnlyAPIServer)
+	}
+
 	for _, l := range listeners {
 		defer l.Close()
 		go publicServer.Serve(l)
@@ -136,9 +156,14 @@ func openAPISockets() ([]net.Listener, error) {
 		}
 		stderr.Printf("Listening on %s\n", flagAPIServiceListenAddr)
 
-		l, err := net.Listen("tcp", flagAPIServiceListenAddr)
-		if err != nil {
-			return nil, errwrap.Wrap(fmt.Errorf("could not open tcp socket"), err)
+		var errtcp, errunix error
+		var l net.Listener
+		l, errtcp = net.Listen("tcp", flagAPIServiceListenAddr)
+		if errtcp != nil {
+			l, errunix = net.Listen("unix", flagAPIServiceListenAddr)
+			if errunix != nil {
+				return nil, fmt.Errorf("could not create TCP listener: %v, or Unix listener: %v", errtcp, errunix)
+			}
 		}
 		listeners = append(listeners, l)
 	}
