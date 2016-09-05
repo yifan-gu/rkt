@@ -256,6 +256,7 @@ func runRun(cmd *cobra.Command, args []string) (exit int) {
 		Stage1Image:  *s1img,
 		UUID:         p.UUID,
 		Debug:        globalFlags.Debug,
+		Mutable:      false,
 	}
 
 	ovlOk := true
