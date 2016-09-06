@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coreos/rkt/lib"
+	rkt "github.com/coreos/rkt/lib"
 	"github.com/spf13/cobra"
 )
 
@@ -40,7 +40,7 @@ func init() {
 	cmdAppStatus.Flags().StringVar(&flagFormat, "format", "", "choose the output format, allowed format includes 'json', 'json-pretty'. If empty, then the result is printed as key value pairs")
 }
 
-func printApp(app *lib.App) {
+func printApp(app *rkt.App) {
 	stdout.Printf("name=%s\n", app.Name)
 	stdout.Printf("state=%s\n", app.State)
 	stdout.Printf("image_id=%s\n", app.ImageID)
@@ -84,7 +84,7 @@ func runAppStatus(cmd *cobra.Command, args []string) (exit int) {
 		return 1
 	}
 
-	apps, err := lib.GetApps(getDataDir(), args[0], flagAppName)
+	apps, err := rkt.AppsForPod(args[0], getDataDir(), flagAppName)
 	if err != nil {
 		stderr.PrintE("error getting app status", err)
 		return 1

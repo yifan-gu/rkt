@@ -12,5 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// lib package is expected to be used by other projects who want to integrate with rkt.
-package lib
+// Package rkt is expected to be used by other projects who want to integrate with rkt.
+// See https://peter.bourgon.org/go-best-practices-2016/#repository-structure for the rationale of calling this package "rkt" located in the "lib" subdirectory.
+package rkt

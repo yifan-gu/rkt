@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package lib
+package rkt
 
 import (
 	"fmt"
@@ -34,56 +34,58 @@ const (
 	AppStateExited  AppState = "exited"
 )
 
-// Mount defines the mount point.
-type Mount struct {
-	// Name of the mount.
-	Name string `json:"name"`
-	// Container path of the mount.
-	ContainerPath string `json:"container_path"`
-	// Host path of the mount.
-	HostPath string `json:"host_path"`
-	// Whether the mount is read-only.
-	ReadOnly bool `json:"read_only"`
-	// TODO(yifan): What about 'SelinuxRelabel bool'?
-}
+type (
+	// Mount defines the mount point.
+	Mount struct {
+		// Name of the mount.
+		Name string `json:"name"`
+		// Container path of the mount.
+		ContainerPath string `json:"container_path"`
+		// Host path of the mount.
+		HostPath string `json:"host_path"`
+		// Whether the mount is read-only.
+		ReadOnly bool `json:"read_only"`
+		// TODO(yifan): What about 'SelinuxRelabel bool'?
+	}
 
-// App defines the app object.
-type App struct {
-	// Name of the app.
-	Name string `json:"name"`
-	// State of the app, can be created, running, exited, or unknown.
-	State AppState `json:"state"`
-	// Creation time of the container, nanoseconds since epoch.
-	CreatedAt *int64 `json:"created_at,omitempty"`
-	// Start time of the container, nanoseconds since epoch.
-	StartedAt *int64 `json:"started_at,omitempty"`
-	// Finish time of the container, nanoseconds since epoch.
-	FinishedAt *int64 `json:"finished_at,omitempty"`
-	// Exit code of the container.
-	ExitCode *int `json:"exit_code,omitempty"`
-	// Image ID of the container.
-	ImageID string `json:"image_id"`
-	// Mount points of the container.
-	Mounts []*Mount `json:"mounts,omitempty"`
-	// Annotations of the container.
-	Annotations map[string]string `json:"annotations,omitempty"`
-}
+	// App defines the app object.
+	App struct {
+		// Name of the app.
+		Name string `json:"name"`
+		// State of the app, can be created, running, exited, or unknown.
+		State AppState `json:"state"`
+		// Creation time of the container, nanoseconds since epoch.
+		CreatedAt *int64 `json:"created_at,omitempty"`
+		// Start time of the container, nanoseconds since epoch.
+		StartedAt *int64 `json:"started_at,omitempty"`
+		// Finish time of the container, nanoseconds since epoch.
+		FinishedAt *int64 `json:"finished_at,omitempty"`
+		// Exit code of the container.
+		ExitCode *int `json:"exit_code,omitempty"`
+		// Image ID of the container.
+		ImageID string `json:"image_id"`
+		// Mount points of the container.
+		Mounts []*Mount `json:"mounts,omitempty"`
+		// Annotations of the container.
+		Annotations map[string]string `json:"annotations,omitempty"`
+	}
 
-// Apps is a list of apps.
-type Apps struct {
-	AppList []App `json:"app_list,omitempty"`
-}
+	// Apps is a list of apps.
+	Apps struct {
+		AppList []App `json:"app_list,omitempty"`
+	}
+)
 
-// GetApps returns the app infos of the pod with the given uuid.
+// AppsForPod returns the apps of the pod with the given uuid in the given data directory.
 // If appName is non-empty, then only the app with the given name will be returned.
-func GetApps(dataDir, uuid string, appName string) ([]*App, error) {
-	p, err := pkgPod.GetPodFromUUIDString(dataDir, uuid)
+func AppsForPod(uuid, dataDir string, appName string) ([]*App, error) {
+	p, err := pkgPod.PodFromUUIDString(dataDir, uuid)
 	if err != nil {
 		return nil, err
 	}
 	defer p.Close()
 
-	_, podManifest, err := p.GetPodManifest()
+	_, podManifest, err := p.PodManifest()
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +96,7 @@ func GetApps(dataDir, uuid string, appName string) ([]*App, error) {
 			continue
 		}
 
-		app, err := getApp(&ra, podManifest, p)
+		app, err := newApp(&ra, podManifest, p)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Cannot get app status: %v", err)
 			continue
@@ -106,8 +108,8 @@ func GetApps(dataDir, uuid string, appName string) ([]*App, error) {
 	return apps, nil
 }
 
-// getApp constructs the App object with the runtime app and pod manifest.
-func getApp(ra *schema.RuntimeApp, podManifest *schema.PodManifest, pod *pkgPod.Pod) (*App, error) {
+// newApp constructs the App object with the runtime app and pod manifest.
+func newApp(ra *schema.RuntimeApp, podManifest *schema.PodManifest, pod *pkgPod.Pod) (*App, error) {
 	app := &App{
 		Name:        ra.Name.String(),
 		ImageID:     ra.Image.ID.String(),
@@ -151,24 +153,26 @@ func getApp(ra *schema.RuntimeApp, podManifest *schema.PodManifest, pod *pkgPod.
 	}
 
 	// Generate state.
-	if err := getAppState(app, pod); err != nil {
+	if err := appState(app, pod); err != nil {
 		return nil, fmt.Errorf("error getting app's state: %v", err)
 	}
 
 	return app, nil
 }
 
-func getAppState(app *App, pod *pkgPod.Pod) error {
+func appState(app *App, pod *pkgPod.Pod) error {
 	app.State = AppStateUnknown
 
 	appInfoDir, err := appInfoDir(pod, app.Name)
 	if err != nil {
 		return err
 	}
+
 	appStartedFile, err := appStartedFile(pod, app.Name)
 	if err != nil {
 		return err
 	}
+
 	appExitedFile, err := appExitedFile(pod, app.Name)
 	if err != nil {
 		return err

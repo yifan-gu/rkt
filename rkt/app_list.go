@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/coreos/rkt/lib"
+	rkt "github.com/coreos/rkt/lib"
 	"github.com/spf13/cobra"
 )
 
@@ -41,7 +41,7 @@ func runAppList(cmd *cobra.Command, args []string) int {
 		return 1
 	}
 
-	apps, err := lib.GetApps(getDataDir(), args[0], "")
+	apps, err := rkt.AppsForPod(args[0], getDataDir(), "")
 	if err != nil {
 		stderr.PrintE("error listing apps", err)
 		return 1
