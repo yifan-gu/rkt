@@ -18,9 +18,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 
 	"github.com/appc/spec/schema"
+	"github.com/coreos/rkt/common"
 	pkgPod "github.com/coreos/rkt/pkg/pod"
 )
 
@@ -163,21 +163,6 @@ func newApp(ra *schema.RuntimeApp, podManifest *schema.PodManifest, pod *pkgPod.
 func appState(app *App, pod *pkgPod.Pod) error {
 	app.State = AppStateUnknown
 
-	appInfoDir, err := appInfoDir(pod, app.Name)
-	if err != nil {
-		return err
-	}
-
-	appStartedFile, err := appStartedFile(pod, app.Name)
-	if err != nil {
-		return err
-	}
-
-	appExitedFile, err := appExitedFile(pod, app.Name)
-	if err != nil {
-		return err
-	}
-
 	defer func() {
 		if pod.AfterRun() {
 			// If the pod is hard killed, set the app to 'exited' state.
@@ -197,7 +182,7 @@ func appState(app *App, pod *pkgPod.Pod) error {
 	}()
 
 	// Check if the app is created.
-	fi, err := os.Stat(appInfoDir)
+	fi, err := os.Stat(common.AppCreatedPath(pod.Path(), app.Name))
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("cannot stat app creation file: %v", err)
@@ -210,7 +195,7 @@ func appState(app *App, pod *pkgPod.Pod) error {
 	app.CreatedAt = &createdAt
 
 	// Check if the app is started.
-	fi, err = os.Stat(appStartedFile)
+	fi, err = os.Stat(common.AppStartedPath(pod.Path(), app.Name))
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("cannot stat app started file: %v", err)
@@ -223,7 +208,8 @@ func appState(app *App, pod *pkgPod.Pod) error {
 	app.StartedAt = &startedAt
 
 	// Check if the app is exited.
-	fi, err = os.Stat(appExitedFile)
+	appStatusFile := common.AppStatusPath(pod.Path(), app.Name)
+	fi, err = os.Stat(appStatusFile)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("cannot stat app exited file: %v", err)
@@ -236,7 +222,7 @@ func appState(app *App, pod *pkgPod.Pod) error {
 	app.FinishedAt = &finishedAt
 
 	// Read exit code.
-	exitCode, err := readExitCode(appExitedFile)
+	exitCode, err := readExitCode(appStatusFile)
 	if err != nil {
 		return fmt.Errorf("cannot read exit code: %v", err)
 	}
@@ -256,32 +242,4 @@ func readExitCode(path string) (int, error) {
 		return -1, fmt.Errorf("cannot parse exit code: %v", err)
 	}
 	return exitCode, nil
-}
-
-func appStatusDir(pod *pkgPod.Pod) (string, error) {
-	stage1RootfsPath, err := pod.Stage1RootfsPath()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(stage1RootfsPath, "/rkt/status"), nil
-}
-
-func appInfoDir(pod *pkgPod.Pod, appName string) (string, error) {
-	return filepath.Join(pod.Path(), "/appsinfo", appName), nil
-}
-
-func appStartedFile(pod *pkgPod.Pod, appName string) (string, error) {
-	statusDir, err := appStatusDir(pod)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(statusDir, fmt.Sprintf("%s-started", appName)), nil
-}
-
-func appExitedFile(pod *pkgPod.Pod, appName string) (string, error) {
-	statusDir, err := appStatusDir(pod)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(statusDir, appName), nil
 }

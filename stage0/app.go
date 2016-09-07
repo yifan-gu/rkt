@@ -195,6 +195,10 @@ func AddApp(cfg RunConfig, dir string, img *types.Hash) error {
 		return err
 	}
 
+	if _, err := os.Create(common.AppCreatedPath(p.Root, appName.String())); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -427,6 +431,10 @@ func StartApp(cfg StartConfig) error {
 
 	if privateUsers != "" {
 		args = append(args, fmt.Sprintf("--private-users=%s", privateUsers))
+	}
+
+	if _, err := os.Create(common.AppStartedPath(p.Root, cfg.AppName.String())); err != nil {
+		log.FatalE(fmt.Sprintf("error creating %s-started file", cfg.AppName.String()), err)
 	}
 
 	if err := callEntrypoint(cfg.Dir, appStartEntrypoint, args); err != nil {

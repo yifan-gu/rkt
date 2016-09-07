@@ -33,6 +33,7 @@ var (
 
 func init() {
 	cmdApp.AddCommand(cmdAppList)
+	cmdAppList.Flags().BoolVar(&flagNoLegend, "no-legend", false, "suppress a legend with the list")
 }
 
 func runAppList(cmd *cobra.Command, args []string) int {
@@ -50,7 +51,9 @@ func runAppList(cmd *cobra.Command, args []string) int {
 	tabBuffer := new(bytes.Buffer)
 	tabOut := getTabOutWithWriter(tabBuffer)
 
-	fmt.Fprintf(tabOut, "NAME\tSTATE\n")
+	if !flagNoLegend {
+		fmt.Fprintf(tabOut, "NAME\tSTATE\n")
+	}
 
 	for _, app := range apps {
 		fmt.Fprintf(tabOut, "%s\t%s\n", app.Name, app.State)
