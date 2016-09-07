@@ -26,7 +26,6 @@ import (
 
 	"github.com/coreos/rkt/common"
 	rktlog "github.com/coreos/rkt/pkg/log"
-	stage1types "github.com/coreos/rkt/stage1/common/types"
 	stage1initcommon "github.com/coreos/rkt/stage1/init/common"
 
 	"github.com/appc/spec/schema/types"
@@ -53,12 +52,6 @@ func main() {
 		diag.SetOutput(ioutil.Discard)
 	}
 
-	uuid, err := types.NewUUID(flag.Arg(0))
-	if err != nil {
-		log.PrintE("UUID is missing or malformed", err)
-		os.Exit(1)
-	}
-
 	appName, err := types.NewACName(flag.Arg(1))
 	if err != nil {
 		log.PrintE("invalid app name", err)
@@ -66,13 +59,6 @@ func main() {
 	}
 
 	enterEP := flag.Arg(2)
-
-	root := "."
-	_, err = stage1types.LoadPod(root, uuid)
-	if err != nil {
-		log.PrintE("failed to load pod", err)
-		os.Exit(1)
-	}
 
 	args := []string{enterEP}
 

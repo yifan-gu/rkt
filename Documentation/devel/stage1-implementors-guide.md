@@ -129,6 +129,40 @@ In the bundled rkt stage 1, the entrypoint is sending SIGTERM signal to systemd-
 * `--force` to force the stopping of the pod. E.g. in the bundled rkt stage 1, stop sends SIGKILL
 * UUID of the pod
 
+### rkt app start
+
+`coreos.com/rkt/stage1/app/start`
+
+#### Arguments
+
+`start $OPTIONS UUID APPNAME ENTERENTRYPOINT PID`
+
+* `--debug` to activate debugging
+* `--disable-capabilities-restriction` gives all capabilities to apps (overrides `retain-set` and `remove-set`)
+* `--disable-paths` disables inaccessible and read-only paths (such as `/proc/sysrq-trigger`)
+* `--disable-seccomp` disables seccomp (overrides `retain-set` and `remove-set`)
+* `--private-users=$SHIFT` to define a UID/GID shift when using user namespaces. SHIFT is a two-value colon-separated parameter, the first value is the host UID to assign to the container and the second one is the number of host UIDs to assign.
+
+### rkt app stop
+
+`coreos.com/rkt/stage1/app/stop`
+
+#### Arguments
+
+`stop $OPTIONS UUID APPNAME ENTERENTRYPOINT PID`
+
+* `--debug` to activate debugging
+
+### rkt app rm
+
+`coreos.com/rkt/stage1/app/rm`
+
+#### Arguments
+
+`rm $OPTIONS UUID APPNAME ENTERENTRYPOINT PID`
+
+* `--debug` to activate debugging
+
 ## Versioning
 
 The stage1 command line interface is versioned using an annotation with the name `coreos.com/rkt/stage1/interface-version`.
