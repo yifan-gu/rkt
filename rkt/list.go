@@ -75,11 +75,6 @@ func runList(cmd *cobra.Command, args []string) int {
 				errors = append(errors, newPodListReadError(p, err))
 				return
 			}
-
-			if len(pm.Apps) == 0 {
-				errors = append(errors, newPodListZeroAppsError(p))
-				return
-			}
 		}
 
 		type printedApp struct {
@@ -124,6 +119,18 @@ func runList(cmd *cobra.Command, args []string) int {
 
 		if !flagFullOutput {
 			uuid = uuid[:8]
+		}
+		if len(pm.Apps) == 0 {
+			appsToPrint = append(appsToPrint, printedApp{
+				uuid:    uuid,
+				appName: "-",
+				imgName: "-",
+				imgID:   "-",
+				state:   state,
+				nets:    nets,
+				created: createdStr,
+				started: startedStr,
+			})
 		}
 		for _, app := range pm.Apps {
 			imageName, err := getImageName(p, app.Name)
