@@ -285,6 +285,12 @@ func (uw *UnitWriter) AppUnit(
 		return
 	}
 
+	flavor, _, err := GetFlavor(uw.p)
+	if err != nil {
+		uw.err = errwrap.Wrap(errors.New("failed to create shutdown service"), err)
+		return
+	}
+
 	app := ra.App
 	appName := ra.Name
 	imgName := uw.p.AppNameToImageName(appName)
@@ -420,8 +426,9 @@ func (uw *UnitWriter) AppUnit(
 		}
 	}
 
-	// Restrict access to sensitive paths (eg. procfs) and devices
-	if !insecureOptions.DisablePaths {
+	// Restrict access to sensitive paths (eg. procfs) and devices. For kvm flavor,
+	// these paths are stored inside the vm, without influence to the host.
+	if !insecureOptions.DisablePaths && flavor != "kvm" {
 		opts = protectSystemFiles(opts, appName)
 		opts = append(opts, unit.NewUnitOption("Service", "DevicePolicy", "closed"))
 		deviceAllows, err := generateDeviceAllows(common.Stage1RootfsPath(absRoot), appName, app.MountPoints, mounts, vols, uidRange)
