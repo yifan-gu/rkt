@@ -131,7 +131,7 @@ func main() {
 	}
 
 	if err := cmd.Run(); err != nil {
-		log.PrintE(fmt.Sprintf("error executing daemon-reload", appName.String()), err)
+		log.PrintE("error executing daemon-reload", err)
 		os.Exit(1)
 	}
 
