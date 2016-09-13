@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -25,6 +26,7 @@ import (
 	"github.com/appc/spec/schema"
 	"github.com/appc/spec/schema/lastditch"
 	"github.com/appc/spec/schema/types"
+	"github.com/coreos/rkt/lib"
 	"github.com/coreos/rkt/networking/netinfo"
 	pkgPod "github.com/coreos/rkt/pkg/pod"
 	"github.com/dustin/go-humanize"
@@ -47,6 +49,7 @@ func init() {
 	cmdRkt.AddCommand(cmdList)
 	cmdList.Flags().BoolVar(&flagNoLegend, "no-legend", false, "suppress a legend with the list")
 	cmdList.Flags().BoolVar(&flagFullOutput, "full", false, "use long output format")
+	cmdList.Flags().StringVar(&flagFormat, "format", "", "choose the output format, allowed format includes 'json', 'json-pretty'. If empty, then the result is printed as key value pairs")
 }
 
 func runList(cmd *cobra.Command, args []string) int {
@@ -54,13 +57,15 @@ func runList(cmd *cobra.Command, args []string) int {
 	tabBuffer := new(bytes.Buffer)
 	tabOut := getTabOutWithWriter(tabBuffer)
 
-	if !flagNoLegend {
+	if !flagNoLegend && flagFormat == "" {
 		if flagFullOutput {
 			fmt.Fprintf(tabOut, "UUID\tAPP\tIMAGE NAME\tIMAGE ID\tSTATE\tCREATED\tSTARTED\tNETWORKS\n")
 		} else {
 			fmt.Fprintf(tabOut, "UUID\tAPP\tIMAGE NAME\tSTATE\tCREATED\tSTARTED\tNETWORKS\n")
 		}
 	}
+
+	var pods []*rkt.Pod
 
 	if err := pkgPod.WalkPods(getDataDir(), pkgPod.IncludeMostDirs, func(p *pkgPod.Pod) {
 		var pm schema.PodManifest
@@ -76,6 +81,19 @@ func runList(cmd *cobra.Command, args []string) int {
 				return
 			}
 			pm = *manifest
+
+			if flagFormat != "" {
+				pod := &rkt.Pod{
+					UUID:     p.UUID.String(),
+					State:    podState,
+					Networks: p.Nets,
+				}
+				for _, app := range pm.Apps {
+					pod.AppNames = append(pod.AppNames, app.Name.String())
+				}
+				pods = append(pods, pod)
+				return
+			}
 		}
 
 		type printedApp struct {
@@ -180,12 +198,30 @@ func runList(cmd *cobra.Command, args []string) int {
 		return 1
 	}
 
+	switch flagFormat {
+	case "":
+		tabOut.Flush()
+		stdout.Print(tabBuffer)
+	case "json":
+		result, err := json.Marshal(pods)
+		if err != nil {
+			stderr.PrintE("error marshaling the pods", err)
+			return 1
+		}
+		stdout.Print(string(result))
+	case "json-pretty":
+		result, err := json.MarshalIndent(pods, "", "\t")
+		if err != nil {
+			stderr.PrintE("error marshaling the pods", err)
+			return 1
+		}
+		stdout.Print(string(result))
+	}
+
 	if len(errors) > 0 {
 		printErrors(errors, "listing pods")
 	}
 
-	tabOut.Flush()
-	stdout.Print(tabBuffer)
 	return 0
 }
 

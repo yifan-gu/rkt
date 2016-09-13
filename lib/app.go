@@ -24,58 +24,6 @@ import (
 	pkgPod "github.com/coreos/rkt/pkg/pod"
 )
 
-// AppState defines the state of the app.
-type AppState string
-
-const (
-	AppStateUnknown AppState = "unknown"
-	AppStateCreated AppState = "created"
-	AppStateRunning AppState = "running"
-	AppStateExited  AppState = "exited"
-)
-
-type (
-	// Mount defines the mount point.
-	Mount struct {
-		// Name of the mount.
-		Name string `json:"name"`
-		// Container path of the mount.
-		ContainerPath string `json:"container_path"`
-		// Host path of the mount.
-		HostPath string `json:"host_path"`
-		// Whether the mount is read-only.
-		ReadOnly bool `json:"read_only"`
-		// TODO(yifan): What about 'SelinuxRelabel bool'?
-	}
-
-	// App defines the app object.
-	App struct {
-		// Name of the app.
-		Name string `json:"name"`
-		// State of the app, can be created, running, exited, or unknown.
-		State AppState `json:"state"`
-		// Creation time of the container, nanoseconds since epoch.
-		CreatedAt *int64 `json:"created_at,omitempty"`
-		// Start time of the container, nanoseconds since epoch.
-		StartedAt *int64 `json:"started_at,omitempty"`
-		// Finish time of the container, nanoseconds since epoch.
-		FinishedAt *int64 `json:"finished_at,omitempty"`
-		// Exit code of the container.
-		ExitCode *int32 `json:"exit_code,omitempty"`
-		// Image ID of the container.
-		ImageID string `json:"image_id"`
-		// Mount points of the container.
-		Mounts []*Mount `json:"mounts,omitempty"`
-		// Annotations of the container.
-		Annotations map[string]string `json:"annotations,omitempty"`
-	}
-
-	// Apps is a list of apps.
-	Apps struct {
-		AppList []App `json:"app_list,omitempty"`
-	}
-)
-
 // AppsForPod returns the apps of the pod with the given uuid in the given data directory.
 // If appName is non-empty, then only the app with the given name will be returned.
 func AppsForPod(uuid, dataDir string, appName string) ([]*App, error) {
