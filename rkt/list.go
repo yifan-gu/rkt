@@ -63,18 +63,19 @@ func runList(cmd *cobra.Command, args []string) int {
 	}
 
 	if err := pkgPod.WalkPods(getDataDir(), pkgPod.IncludeMostDirs, func(p *pkgPod.Pod) {
-		var pm *schema.PodManifest
+		var pm schema.PodManifest
 		var err error
 
 		podState := p.State()
 		if podState != pkgPod.Preparing && podState != pkgPod.AbortedPrepare && podState != pkgPod.Deleting {
 			// TODO(vc): we should really hold a shared lock here to prevent gc of the pod
 
-			_, pm, err = p.PodManifest()
+			_, manifest, err := p.PodManifest()
 			if err != nil {
 				errors = append(errors, newPodListReadError(p, err))
 				return
 			}
+			pm = *manifest
 		}
 
 		type printedApp struct {
