@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	pkgPod "github.com/coreos/rkt/pkg/pod"
 	"github.com/spf13/cobra"
@@ -119,8 +120,24 @@ func printStatus(p *pkgPod.Pod) error {
 	}
 
 	if state == pkgPod.Running || state == pkgPod.Deleting || state == pkgPod.ExitedDeleting || state == pkgPod.Exited || state == pkgPod.ExitedGarbage {
-		pid, err := p.Pid()
-		if err != nil {
+		var pid int
+		pidCh := make(chan int, 1)
+
+		// Wait slightly because the pid file might not be written yet when the state changes to 'Running'.
+		go func() {
+			for {
+				pid, err := p.Pid()
+				if err == nil {
+					pidCh <- pid
+					return
+				}
+				time.Sleep(time.Millisecond * 100)
+			}
+		}()
+
+		select {
+		case pid = <-pidCh:
+		case <-time.After(time.Second):
 			return fmt.Errorf("unable to get PID for pod %q: %v", p.UUID, err)
 		}
 
