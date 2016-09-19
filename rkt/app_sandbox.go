@@ -39,7 +39,9 @@ var (
 		Long:  "Initializes an empty pod having no applications.",
 		Run:   runWrapper(runAppSandbox),
 	}
-	flagAppPorts appPortList
+	flagAppPorts    appPortList
+	flagAnnotations kvMap
+	flagLabels      kvMap
 )
 
 func init() {
@@ -57,6 +59,8 @@ func init() {
 	cmdAppSandbox.Flags().Var(&flagAppPorts, "port", "ports to forward. format: \"name:proto:podPort:hostIP:hostPort\"")
 
 	flagAppPorts = appPortList{}
+	cmdAppSandbox.Flags().Var(&flagAnnotations, "annotation", "optional, set the pod's annotations in the form of key=value")
+	cmdAppSandbox.Flags().Var(&flagLabels, "label", "optional, set the pod's label in the form of key=value")
 }
 
 func runAppSandbox(cmd *cobra.Command, args []string) int {
@@ -135,6 +139,8 @@ func runAppSandbox(cmd *cobra.Command, args []string) int {
 		SkipTreeStoreCheck: globalFlags.InsecureFlags.SkipOnDiskCheck(),
 		Apps:               &rktApps,
 		Ports:              []types.ExposedPort(flagAppPorts),
+		CRIAnnotations:     parseAnnotations(&flagAnnotations),
+		CRILabels:          parseLabels(&flagLabels),
 	}
 
 	if globalFlags.Debug {
@@ -286,4 +292,30 @@ func (apl *appPortList) String() string {
 
 func (apl *appPortList) Type() string {
 	return "appPortList"
+}
+
+// parseAnnotations converts the annotations set by '--set-annotation' flag,
+// and returns types.CRIAnnotations.
+func parseAnnotations(flagAnnotations *kvMap) types.CRIAnnotations {
+	if flagAnnotations.IsEmpty() {
+		return nil
+	}
+	annotations := make(types.CRIAnnotations)
+	for k, v := range flagAnnotations.mapping {
+		annotations[k] = v
+	}
+	return annotations
+}
+
+// parseLabels converts the labels set by '--set-label' flag,
+// and returns types.CRILabels.
+func parseLabels(flagLabels *kvMap) types.CRILabels {
+	if flagLabels.IsEmpty() {
+		return nil
+	}
+	labels := make(types.CRILabels)
+	for k, v := range flagLabels.mapping {
+		labels[k] = v
+	}
+	return labels
 }
