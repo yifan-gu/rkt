@@ -43,6 +43,7 @@ var (
 	}
 	flagNoLegend   bool
 	flagFullOutput bool
+	flagFormat     string
 )
 
 func init() {

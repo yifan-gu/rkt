@@ -31,7 +31,6 @@ var (
 		Long:  "This will print detailed status of an app",
 		Run:   runWrapper(runAppStatus),
 	}
-	flagFormat string
 )
 
 func init() {
