@@ -12,28 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package schema
+package types
 
-import (
-	"github.com/appc/spec/schema/types"
-)
+import "fmt"
 
-const (
-	// version represents the canonical version of the appc spec and tooling.
-	// For now, the schema and tooling is coupled with the spec itself, so
-	// this must be kept in sync with the VERSION file in the root of the repo.
-	version string = "0.8.7+git"
-)
+type CRILabels map[ACIdentifier]string
 
-var (
-	// AppContainerVersion is the SemVer representation of version
-	AppContainerVersion types.SemVer
-)
-
-func init() {
-	v, err := types.NewSemVer(version)
-	if err != nil {
-		panic(err)
+func (l CRILabels) assertValid() error {
+	for k, _ := range l {
+		if err := k.assertValid(); err != nil {
+			return err
+		}
+		if len(k) > 63 {
+			return fmt.Errorf(`label %q too long`, k)
+		}
 	}
-	AppContainerVersion = *v
+	return nil
 }
