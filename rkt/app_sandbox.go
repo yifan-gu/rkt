@@ -15,6 +15,12 @@
 package main
 
 import (
+	"fmt"
+	"net"
+	"strconv"
+	"strings"
+
+	"github.com/appc/spec/schema/types"
 	"github.com/coreos/rkt/common"
 	"github.com/coreos/rkt/pkg/label"
 	"github.com/coreos/rkt/pkg/lock"
@@ -33,6 +39,7 @@ var (
 		Long:  "Initializes an empty pod having no applications.",
 		Run:   runWrapper(runAppSandbox),
 	}
+	flagAppPorts appPortList
 )
 
 func init() {
@@ -47,6 +54,9 @@ func init() {
 	cmdAppSandbox.Flags().Var(&flagDNSSearch, "dns-search", "DNS search domains to write in /etc/resolv.conf")
 	cmdAppSandbox.Flags().Var(&flagDNSOpt, "dns-opt", "DNS options to write in /etc/resolv.conf")
 	cmdAppSandbox.Flags().StringVar(&flagHostname, "hostname", "", `pod's hostname. If empty, it will be "rkt-$PODUUID"`)
+	cmdAppSandbox.Flags().Var(&flagAppPorts, "port", "ports to forward. format: \"name:proto:podPort:hostIP:hostPort\"")
+
+	flagAppPorts = appPortList{}
 }
 
 func runAppSandbox(cmd *cobra.Command, args []string) int {
@@ -124,6 +134,7 @@ func runAppSandbox(cmd *cobra.Command, args []string) int {
 		PrivateUsers:       user.NewBlankUidRange(),
 		SkipTreeStoreCheck: globalFlags.InsecureFlags.SkipOnDiskCheck(),
 		Apps:               &rktApps,
+		Ports:              []types.ExposedPort(flagAppPorts),
 	}
 
 	if globalFlags.Debug {
@@ -196,4 +207,83 @@ func runAppSandbox(cmd *cobra.Command, args []string) int {
 	stage0.Run(rcfg, p.Path(), getDataDir()) // execs, never returns
 
 	return 1
+}
+
+/*
+ * The sandbox uses a different style of port forwarding - instead of mapping
+ * from port to app (via name), we just map ports directly.
+ *
+ * The format is name:proto:podPort:hostIP:hostPort
+ * e.g. http:tcp:8080:0.0.0.0:80
+ */
+type appPortList []types.ExposedPort
+
+func (apl *appPortList) Set(s string) error {
+	parts := strings.SplitN(s, ":", 5)
+	if len(parts) != 5 {
+		return fmt.Errorf("--port invalid format")
+	}
+
+	// parsey parsey
+	name, err := types.NewACName(parts[0])
+	if err != nil {
+		return err
+	}
+
+	proto := parts[1]
+	switch proto {
+	case "tcp", "udp":
+	default:
+		return fmt.Errorf("invalid protocol %q", proto)
+	}
+
+	p, err := strconv.ParseUint(parts[2], 10, 16)
+	if err != nil {
+		return err
+	}
+	podPortNo := uint(p)
+
+	ip := net.ParseIP(parts[3])
+	if ip == nil {
+		return fmt.Errorf("could not parse IP %q", ip)
+	}
+
+	p, err = strconv.ParseUint(parts[4], 10, 16)
+	if err != nil {
+		return err
+	}
+	hostPortNo := uint(p)
+
+	podSide := types.Port{
+		Name:            *name,
+		Protocol:        proto,
+		Port:            podPortNo,
+		Count:           1,
+		SocketActivated: false,
+	}
+
+	hostSide := types.ExposedPort{
+		Name:     *name,
+		HostPort: hostPortNo,
+		HostIP:   ip,
+		PodPort:  &podSide,
+	}
+
+	*apl = append(*apl, hostSide)
+	return nil
+}
+
+func (apl *appPortList) String() string {
+	ss := make([]string, 0, len(*apl))
+	for _, p := range *apl {
+		ss = append(ss, fmt.Sprintf("%s:%s:%d:%s:%d",
+			p.Name, p.PodPort.Protocol, p.PodPort.Port,
+			p.HostIP, p.HostPort))
+
+	}
+	return strings.Join(ss, ",")
+}
+
+func (apl *appPortList) Type() string {
+	return "appPortList"
 }
