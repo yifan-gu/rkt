@@ -516,7 +516,7 @@ func RemountV1CgroupsRO(root string, enabledCgroups map[int][]string, subcgroup 
 // specified app read-write so the systemd inside stage1 can apply isolators
 // to them.
 func RemountCgroupKnobsRW(enabledCgroups map[int][]string, subcgroup string, serviceName string, enterCmd []string) error {
-	controllers := GetControllerDirs(enabledCgroups)
+	controllers := GetV1ControllerDirs(enabledCgroups)
 
 	// Mount RW knobs we need to make the enabled isolators work
 	for _, c := range controllers {
@@ -529,7 +529,7 @@ func RemountCgroupKnobsRW(enabledCgroups map[int][]string, subcgroup string, ser
 		if err := os.MkdirAll(appCgroup, 0755); err != nil {
 			return err
 		}
-		for _, f := range getControllerRWFiles(c) {
+		for _, f := range getV1ControllerRWFiles(c) {
 			cgroupFilePath := filepath.Join(appCgroup, f)
 			// the file may not be there if kernel doesn't support the
 			// feature, skip it in that case
